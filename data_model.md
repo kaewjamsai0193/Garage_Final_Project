@@ -2,7 +2,7 @@
 
 PostgreSQL อ้างอิงข้อตัดสินใจใน `new_scenario_summary.md` และหน้าจอใน `screens.md`
 
-**26 ตาราง** เงินทุกคอลัมน์เป็น `numeric(12,2)` วันเวลาเป็น `timestamptz` `id` ของทุกตารางเป็น `bigserial`
+**23 ตาราง** เงินทุกคอลัมน์เป็น `numeric(12,2)` วันเวลาเป็น `timestamptz` `id` ของทุกตารางเป็น `bigserial`
 
 สถานะการสร้างจริง — ตาราง `users` สร้างแล้ว (migration `0001`) ที่เหลือทยอยสร้างตามเฟสในแผน
 
@@ -31,11 +31,8 @@ erDiagram
 
     invoices ||--o{ invoice_items : "มีรายการ"
     invoice_items ||--o{ invoice_item_lots : "ตัดจาก Lot"
-    invoices ||--|| payments : "รับเงินครั้งเดียว"
-    invoices ||--o{ warranties : "ให้ประกัน"
 
     vehicles ||--o{ maintenance_reminders : "ถึงกำหนดเช็คระยะ"
-    vehicles ||--o{ warranties : "อยู่ในประกัน"
 ```
 
 เส้นที่ต้องอธิบายได้ตอนสอบ
@@ -43,6 +40,20 @@ erDiagram
 - **`vehicles ||--o{ job_orders`** รถหนึ่งคันมีใบงานได้หลายใบ**ตลอดประวัติ** แต่ที่ยัง**ค้างอยู่**ได้ใบเดียว ซึ่งบังคับด้วย partial unique index ไม่ใช่ด้วยชนิดความสัมพันธ์
 - **`job_orders ||--o| invoices`** ใบงานหนึ่งใบออกบิลได้ไม่เกินหนึ่งใบ และบิลขายหน้าร้านไม่มีใบงานเลย `job_id` จึงเป็น null ได้
 - **`invoice_items ||--o{ invoice_item_lots`** หนึ่งรายการขายอาจกินหลาย Lot ตารางกลางนี้คือตัวที่ทำให้รู้ต้นทุนจริงและคืนของกลับ Lot เดิมได้
+
+### สามตารางที่ถูกยุบทิ้งโดยตั้งใจ
+
+ออกแบบรอบแรกมี 26 ตาราง ยุบเหลือ 23 โดยไม่เสียความสามารถใด ๆ
+
+| ยุบอะไร | เหตุผล |
+|---|---|
+| `goods_receipt_items` รวมเข้า `stock_lots` | ทุกแถวที่รับของสร้าง Lot หนึ่งแถวเสมอ เป็น 1:1 กันเป๊ะ ไม่มีทางเป็นอย่างอื่น |
+| `payments` รวมเข้า `invoices` | ระบบรับเงินครบทีเดียว ไม่มีการผ่อนเป็นงวด จึงเป็น 1:1 กับบิล และ `received_at` ที่เป็น null กลายเป็นเงื่อนไข "ยังไม่ได้รับเงิน" ที่ใช้ตรวจตอนยกเลิกบิลได้เลย |
+| `warranties` ลบทิ้ง | วันหมดประกันเก็บอยู่ที่ `invoice_items.warranty_expires_on` อยู่แล้ว การเก็บซ้ำสองที่คือช่องทางให้ข้อมูลไม่ตรงกัน |
+
+**หลักที่ใช้ตัดสิน** ยุบเมื่อสองตารางเกิดและตายพร้อมกันเสมอ อย่ายุบเมื่อจำนวนแถวไม่เท่ากัน
+เพราะจะได้ตารางที่มีคอลัมน์ว่างเต็มไปหมด — ด้วยเหตุนี้ `invoice_items` กับ `invoice_item_lots`
+จึงยุบไม่ได้ ต่อให้ตารางดูเยอะ
 
 ---
 
@@ -105,7 +116,7 @@ erDiagram
 erDiagram
     products ||--o{ stock_lots : "รับเข้าเป็นรอบ"
     stock_lots ||--o{ stock_movements : "ทุกการเคลื่อนไหว"
-    goods_receipt_items ||--|| stock_lots : "หนึ่งแถวสร้างหนึ่ง Lot"
+    goods_receipts ||--o{ stock_lots : "หนึ่งใบรับ หลาย Lot"
 
     products {
         bigint id PK
@@ -122,9 +133,10 @@ erDiagram
     stock_lots {
         bigint id PK
         bigint product_id FK
-        bigint receipt_item_id FK
+        bigint receipt_id FK
         timestamptz received_at "ใช้เรียงคิว FIFO"
         numeric unit_cost "ก่อน VAT"
+        numeric vat_amount "0 เมื่อไม่มีใบกำกับ"
         int qty_received
         int qty_remaining
     }
@@ -143,8 +155,11 @@ erDiagram
     }
 ```
 
-**`stock_lots` คือหัวใจของระบบ** หนึ่งครั้งที่รับของ = หนึ่ง Lot เสมอ ไม่ว่าจะมาทางใบสั่งซื้อหรือ
-ซื้อด่วน หัวเทียนทุน 80 กับทุน 120 จึงอยู่คนละแถว ทำให้คิดกำไรได้แม่น
+**`stock_lots` คือหัวใจของระบบ** หนึ่งสินค้าที่รับเข้ามาหนึ่งครั้ง = หนึ่ง Lot เสมอ ไม่ว่าจะมาทาง
+ใบสั่งซื้อหรือซื้อด่วน หัวเทียนทุน 80 กับทุน 120 จึงอยู่คนละแถว ทำให้คิดกำไรได้แม่น
+
+ตารางนี้ทำหน้าที่เป็นรายการของใบรับของไปในตัว จึงเก็บ `unit_cost` กับ `vat_amount` ไว้เอง
+ไม่ต้องมีตาราง `goods_receipt_items` แยกอีกชั้น หนึ่งใบรับที่มีสินค้าสามชนิดก็ได้สาม Lot
 
 FIFO เรียงตาม `received_at` แล้ว `id` ส่วน `qty_remaining` เป็นตัวเลขที่เก็บไว้จริง ไม่คำนวณสด
 จาก movements เพราะทุกการตัดสต็อกต้อง lock แถวอยู่แล้ว
@@ -162,9 +177,9 @@ erDiagram
     suppliers ||--o{ goods_receipts : "รับของจาก"
     purchase_orders ||--o{ purchase_order_items : "มีรายการ"
     purchase_orders ||--o{ goods_receipts : "รับได้หลายครั้ง"
-    goods_receipts ||--o{ goods_receipt_items : "มีรายการ"
+    goods_receipts ||--o{ stock_lots : "แต่ละรายการกลายเป็นหนึ่ง Lot"
     products ||--o{ purchase_order_items : "สั่ง"
-    products ||--o{ goods_receipt_items : "รับ"
+    products ||--o{ stock_lots : "รับเข้า"
 
     suppliers {
         bigint id PK
@@ -203,13 +218,15 @@ erDiagram
         timestamptz created_at
     }
 
-    goods_receipt_items {
+    stock_lots {
         bigint id PK
         bigint receipt_id FK
         bigint product_id FK
-        int qty
+        int qty_received
+        int qty_remaining
         numeric unit_cost "ก่อน VAT"
         numeric vat_amount "0 เมื่อไม่มีใบกำกับ"
+        timestamptz received_at
     }
 ```
 
@@ -307,7 +324,6 @@ erDiagram
     customers ||--o{ invoices : "ลูกค้า"
     promotions ||--o{ invoices : "ส่วนลดที่ใช้"
     invoices ||--o{ invoice_items : "มีรายการ"
-    invoices ||--|| payments : "รับเงินครั้งเดียว"
     invoice_items ||--o{ invoice_item_lots : "ตัดจากหลาย Lot ได้"
     stock_lots ||--o{ invoice_item_lots : "ต้นทุนจริงที่ถูกตัด"
     products ||--o{ invoice_items : "อะไหล่ที่ขาย"
@@ -334,6 +350,11 @@ erDiagram
         text cancel_reason
         bigint issued_by FK "ห้ามเป็น mechanic"
         timestamptz issued_at
+        numeric amount_received
+        numeric withholding_amount "ลูกค้านิติบุคคลหักไว้"
+        varchar payment_method
+        bigint received_by FK "ห้ามเป็น mechanic"
+        timestamptz received_at "null คือยังไม่ได้รับเงิน"
     }
 
     invoice_items {
@@ -356,16 +377,6 @@ erDiagram
         numeric unit_cost "ต้นทุนจริงของ Lot นั้น"
     }
 
-    payments {
-        bigint id PK
-        bigint invoice_id FK
-        numeric amount_received
-        numeric withholding_amount "ลูกค้านิติบุคคลหักไว้"
-        varchar method
-        bigint received_by FK
-        timestamptz received_at
-    }
-
     document_sequences {
         varchar doc_type PK
         int doc_year PK
@@ -382,8 +393,13 @@ erDiagram
 **`invoice_item_lots` คือตารางที่ทำให้ระบบนี้ต่างจากโปรแกรมขายทั่วไป** ถ้าไม่มีตารางนี้จะรู้แค่ว่า
 ขายอะไรไป แต่ไม่รู้ว่าตัดมาจาก Lot ไหน แปลว่าคิดกำไรจริงไม่ได้และคืนของกลับ Lot เดิมไม่ได้
 
-`payments` รับครั้งเดียวต่อบิล ระบบถือว่าครบเมื่อ `amount_received + withholding_amount = grand_total`
-แล้วปิดใบงานอัตโนมัติ
+**การรับเงินอยู่บนตัวบิลเลย ไม่มีตาราง `payments` แยก** เพราะระบบรับเงินครบทีเดียว ไม่มีการผ่อน
+เป็นงวด บิลหนึ่งใบจึงมีการรับเงินได้ครั้งเดียวเสมอ
+
+ระบบถือว่าครบเมื่อ `amount_received + withholding_amount = grand_total` แล้วปิดใบงานอัตโนมัติ
+
+ผลพลอยได้คือ `received_at is null` กลายเป็นเงื่อนไข "ยังไม่ได้รับเงิน" ที่อ่านง่าย ใช้ตรวจตอน
+ยกเลิกบิลได้ตรง ๆ โดยไม่ต้อง join ไปตารางอื่น
 
 ---
 
@@ -391,9 +407,6 @@ erDiagram
 
 ```mermaid
 erDiagram
-    invoices ||--o{ warranties : "ให้ประกัน"
-    invoice_items ||--o| warranties : "ต่อรายการ"
-    vehicles ||--o{ warranties : "ของรถคันนี้"
     vehicles ||--o{ maintenance_reminders : "ถึงกำหนดเช็คระยะ"
     products ||--o{ maintenance_reminders : "อะไหล่ที่ต้องเปลี่ยน"
     maintenance_reminders ||--o{ reminder_calls : "บันทึกทุกครั้งที่โทร"
@@ -408,16 +421,6 @@ erDiagram
         date start_date
         date end_date
         boolean is_active
-    }
-
-    warranties {
-        bigint id PK
-        bigint invoice_id FK
-        bigint invoice_item_id FK
-        bigint vehicle_id FK
-        bigint product_id FK "null เมื่อเป็นค่าแรง"
-        varchar warranty_type "labor / part"
-        date expires_on
     }
 
     maintenance_reminders {
@@ -450,8 +453,27 @@ erDiagram
 บิลเก็บ `promotion_id` ไว้อ้างอิงแต่ยอดส่วนลดจริงเก็บเป็นตัวเลขที่ `invoices.discount_amount`
 แก้โปรโมชั่นทีหลังจึงไม่กระทบบิลเก่า
 
-`warranties` สร้างตอนออกบิลงานซ่อม หน้ารับรถเข้าอู่อ่านตารางนี้ด้วย `vehicle_id` กับ
-`expires_on >= today` บิลขายหน้าร้านไม่สร้างแถวที่นี่เพราะไม่มีรถผูก
+**การรับประกันไม่มีตารางของตัวเอง** วันหมดประกันเก็บที่ `invoice_items.warranty_expires_on`
+ซึ่งคำนวณตอนออกบิล ค่าแรงใช้จำนวนวันจากหน้าตั้งค่า อะไหล่ใช้ `products.warranty_days` ของตัวนั้น
+
+หน้ารับรถเข้าอู่ถามว่า "รถคันนี้ยังอยู่ในประกันอะไรบ้าง" ด้วยการไล่จากรถไปหาบิล
+
+```sql
+select ii.description, ii.warranty_expires_on
+  from invoice_items ii
+  join invoices i   on i.id = ii.invoice_id
+  join job_orders j on j.id = i.job_id
+ where j.vehicle_id = $1
+   and i.status = 'issued'
+   and ii.warranty_expires_on >= current_date;
+```
+
+ต้องมี index ที่ `job_orders (vehicle_id)` และ `invoice_items (warranty_expires_on)` ไม่งั้นหน้ารับรถ
+จะช้าเมื่อข้อมูลเยอะ
+
+การ join สามตารางนี้เป็นราคาที่ยอมจ่ายเพื่อไม่ให้วันหมดประกันถูกเก็บไว้สองที่แล้วไม่ตรงกัน
+และบิลขายหน้าร้านหลุดออกจากผลลัพธ์เองโดยอัตโนมัติ เพราะ `job_id` เป็น null จึง join ไม่ติด
+ซึ่งตรงกับกฎที่ว่าของที่ซื้อกลับไปเองไม่มีประกันผูกกับรถ
 
 หนึ่งคู่ (รถ, สินค้า) มีรายการเตือนที่ยัง `pending` ได้รายการเดียว ถ้าลูกค้ากลับมาเปลี่ยนตัวเดิม
 ก่อนกำหนด รายการเดิมถูกปิดแล้วสร้างรอบใหม่แทน ไม่เตือนซ้อน
