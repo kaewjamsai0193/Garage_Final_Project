@@ -115,7 +115,7 @@ erDiagram
         bigint receipt_id FK
         timestamptz received_at "ใช้เรียงคิว FIFO"
         numeric unit_cost "ก่อน VAT"
-        numeric vat_amount "0 เมื่อไม่มีใบกำกับ"
+        numeric vat_amount "ต่อชิ้น 0 เมื่อไม่มีใบกำกับ"
         int qty_received
         int qty_remaining
     }
@@ -126,7 +126,7 @@ erDiagram
         bigint lot_id FK
         int qty "บวกคือเข้า ลบคือออก"
         varchar movement_type "receive / issue / return / adjust"
-        varchar ref_type
+        varchar ref_type "job_order / invoice / goods_receipt / adjustment"
         bigint ref_id
         text reason "บังคับเมื่อ adjust"
         bigint created_by FK
@@ -138,6 +138,9 @@ erDiagram
 - FIFO เรียงตาม `received_at` แล้ว `id`
 - `qty_remaining` เก็บเป็นตัวเลขจริง ไม่คำนวณสดจาก movements
 - การคืนของอ้าง `lot_id` เดิมเสมอ ไม่สร้าง Lot ใหม่
+- **สต็อกตัดตอนใบเสนอราคาได้รับอนุมัติ ไม่ใช่ตอนออกบิล** การตัดครั้งนั้นเขียน `stock_movements` ที่
+  `ref_type = 'job_order'` และ `ref_id` เป็นเลขใบงาน ตารางนี้จึงเป็นที่เดียวที่รู้ว่าใบงานกินไปกี่ชิ้นจาก Lot ไหน
+  ทั้งหน้าจอรายละเอียดใบงานและการสร้าง `invoice_item_lots` ตอนออกบิลอ่านจากที่นี่
 
 ---
 
@@ -174,12 +177,12 @@ erDiagram
         bigint product_id FK
         int qty_ordered
         int qty_received
-        numeric unit_price
+        numeric unit_price "ราคาที่ตกลงกับร้าน ก่อน VAT"
     }
 
     goods_receipts {
         bigint id PK
-        varchar receipt_number
+        varchar receipt_number UK
         bigint supplier_id FK
         bigint po_id FK "null เมื่อซื้อด่วน"
         varchar receipt_type "po / urgent"
@@ -213,7 +216,7 @@ erDiagram
         bigint id PK
         varchar job_number UK
         bigint vehicle_id FK
-        bigint customer_id FK
+        bigint customer_id FK "สำเนาเจ้าของ ณ วันรับรถ"
         int mileage
         text symptom
         varchar status "pending / in_progress / done / closed / cancelled"
@@ -288,13 +291,13 @@ erDiagram
         int doc_number
         varchar invoice_type "repair / counter_sale"
         bigint job_id FK "null เมื่อขายหน้าร้าน"
-        bigint customer_id FK
+        bigint customer_id FK "null เมื่อลูกค้าขาจร"
         varchar buyer_name "สำเนา ไม่ใช่ FK"
         varchar buyer_address "สำเนา"
         varchar buyer_tax_id "สำเนา"
         varchar tax_invoice_form "abbreviated / full"
         bigint promotion_id FK
-        numeric discount_amount
+        numeric discount_amount "รวม VAT เหมือนราคาที่คุยกับลูกค้า"
         numeric subtotal_ex_vat
         numeric vat_amount
         numeric grand_total
@@ -340,8 +343,15 @@ erDiagram
 - `(doc_type, doc_year, doc_number)` เป็น unique งานเคลมอยู่คนละ `doc_type` จึงไม่กินเลขใบกำกับ
 - ข้อมูลผู้ซื้อสามคอลัมน์เป็นสำเนา ไม่ใช่ foreign key ลูกค้าย้ายที่อยู่แล้วใบกำกับเก่าไม่เปลี่ยนตาม
 - รับเงินครบทีเดียว ระบบถือว่าครบเมื่อ `amount_received + withholding_amount = grand_total` แล้วปิดใบงานอัตโนมัติ
-- `received_at is null` คือเงื่อนไข "ยังไม่ได้รับเงิน" ใช้ตรวจตอนยกเลิกบิล
+- บิลที่ `grand_total = 0` เช่นเอกสารส่งมอบงานเคลม ปิดใบงานตั้งแต่ตอนออกเอกสาร ไม่ต้องกดรับเงิน
+- `received_at is null` คือเงื่อนไข "ยังไม่ได้รับเงิน" ใช้ตรวจตอนยกเลิกบิล คู่กับเงื่อนไขบิลของวันนี้
 - ค่าแรงเป็นแถวเดียวต่อบิล `item_type = labor` และ `product_id` เป็น null บิลขายหน้าร้านมีแถว labor ไม่ได้
+- **ออกบิลกับรับเงินเป็นสองจังหวะ** ตอนออกบิลจองเลขที่ คัดลอกข้อมูลผู้ซื้อ คำนวณ `gross_profit`
+  วันหมดประกัน และสร้างรายการเตือนรอบบำรุงรักษา แถวนั้น `received_at` ยังเป็น null
+  ตอนรับเงินครบค่อยเซ็ต `amount_received` `received_by` `received_at` แล้วปิดใบงาน
+- `invoice_item_lots` ของบิลงานซ่อมไม่ตัดสต็อกใหม่ สร้างจาก `stock_movements` ของใบงานที่ตัดไปแล้ว
+  ส่วนบิลขายหน้าร้านตัด FIFO ตอนออกบิลเลยเพราะไม่มีใบงานมาก่อน
+- รายงานภาษีขายกรอง `doc_type = 'tax_invoice'` เท่านั้น `warranty_claim` ไม่เข้ารายงาน
 
 ---
 
@@ -390,7 +400,7 @@ erDiagram
 - บิลเก็บ `promotion_id` ไว้อ้างอิง แต่ยอดส่วนลดจริงเก็บเป็นตัวเลขที่ `invoices.discount_amount`
 - วันหมดประกันเก็บที่ `invoice_items.warranty_expires_on` ค่าแรงใช้จำนวนวันจากหน้าตั้งค่า อะไหล่ใช้ `products.warranty_days`
 - หนึ่งคู่ (รถ, สินค้า) มีรายการเตือนที่ยัง `pending` ได้รายการเดียว เปลี่ยนก่อนกำหนดให้ปิดรายการเดิมแล้วสร้างใหม่
-- `settings` เก็บข้อมูลอู่สำหรับหัวบิล จำนวนวันรับประกันค่าแรง และจำนวนวันที่นับว่าของค้างคลัง
+- `settings` เก็บข้อมูลอู่สำหรับหัวบิล รูปแบบเลขที่เอกสาร จำนวนวันรับประกันค่าแรง และจำนวนวันที่นับว่าของค้างคลัง
 
 **ตรวจว่ารถคันนี้ยังอยู่ในประกันอะไรบ้าง**
 
@@ -426,17 +436,34 @@ create unique index job_order_one_primary_mechanic
   where is_primary;
 ```
 
+**หนึ่งใบงานออกบิลได้ใบเดียว**
+
+```sql
+create unique index invoices_one_per_job
+  on invoices (job_id)
+  where job_id is not null and status <> 'cancelled';
+```
+
+ยกเว้นบิลที่ยกเลิกไว้ ไม่งั้นออกบิลใหม่แทนใบที่ยกเลิกไม่ได้
+
 **เลขที่เอกสารห้ามข้าม — ห้ามใช้ SEQUENCE ของ PostgreSQL**
 
 `nextval()` ไม่ย้อนกลับเมื่อ rollback เลขจะหายทันทีที่บันทึกไม่สำเร็จ ต้อง lock แถวใน
 `document_sequences` ในทรานแซกชันเดียวกับการ insert บิล
 
 ```sql
-update document_sequences
-   set last_number = last_number + 1
- where doc_type = $1 and doc_year = $2
-returning last_number;
+insert into document_sequences (doc_type, doc_year, last_number)
+     values ($1, $2, 1)
+on conflict (doc_type, doc_year)
+  do update set last_number = document_sequences.last_number + 1
+  returning last_number;
 ```
+
+ต้องเป็น upsert เพราะแถวของปีใหม่ยังไม่มี ถ้าใช้ `update` เปล่า บิลใบแรกของทุกปีจะได้ 0 แถวกลับมา
+
+**เลขที่เอกสารอื่นใช้ตารางเดียวกัน** `job_number` `po_number` `receipt_number` ออกจาก `document_sequences`
+ด้วย `doc_type` เป็น `job` `po` `receipt` สามชุดนี้ข้ามเลขได้ไม่เป็นไร ไม่ต้องถือ lock ยาวเหมือนใบกำกับ
+รูปแบบของทั้งสามต้องมีปีอยู่ในตัวเลขด้วย เพราะ `last_number` รีเซ็ตทุกปี ถ้าไม่มีปี เลขจะชนของเดิมในปีถัดไป
 
 **ตัดสต็อกแบบ FIFO**
 
@@ -469,7 +496,9 @@ check (qty_remaining >= 0 and qty_remaining <= qty_received)
   ทั้งสองฝั่งเป็นฐานก่อน VAT ถ้าเอา `grand_total` มาลบต้นทุน กำไรจะเกินจริง 7% ทุกใบ
 - **ราคาบนหน้าจอรวม VAT แต่ในบิลต้องแยก** `subtotal_ex_vat = round(ยอดรวม / 1.07, 2)` แล้ว
   `vat_amount = grand_total - subtotal_ex_vat` ไม่ปัดเศษสองรอบแยกกัน
-- **ยกเลิกบิล** คืนของตาม `invoice_item_lots` กลับเข้า Lot เดิม เขียน `stock_movements` แบบ return
-  ล้าง `gross_profit` แต่ห้ามลบแถวบิลและห้ามคืนเลขที่เอกสาร
+- **ยกเลิกบิล** ทำได้เมื่อ `received_at is null` หรือ `issued_at::date = current_date` เงื่อนไขหลังมีไว้ให้
+  บิลขายหน้าร้านที่รับเงินไปพร้อมกันในขั้นตอนเดียว คืนเงินสดจากลิ้นชักแล้วกดยกเลิก ข้ามวันไปแล้วยกเลิกไม่ได้
+  คืนของตาม `invoice_item_lots` กลับเข้า Lot เดิม เขียน `stock_movements` แบบ return ล้าง `gross_profit`
+  ปิดรายการเตือนที่ `source_invoice_id` เป็นบิลใบนั้น แต่ห้ามลบแถวบิลและห้ามคืนเลขที่เอกสาร
 - **รับของแล้วตัดให้ใบงานที่รออยู่** ทำในทรานแซกชันเดียวกับการรับของ เรียงตามเวลาที่ใบเสนอราคา
   ได้รับอนุมัติ ตัดครบแล้วเซ็ต `waiting_parts = false`
