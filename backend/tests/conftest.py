@@ -2,6 +2,8 @@ import os
 
 os.environ["DATABASE_URL"] = "postgresql+psycopg://garage:garage@localhost:5432/garage_test"
 os.environ["JWT_SECRET"] = "test-secret"
+os.environ["JWT_ALGORITHM"] = "HS256"
+os.environ["JWT_EXPIRE_MINUTES"] = "480"
 
 import pytest  # noqa: E402
 from alembic import command  # noqa: E402
