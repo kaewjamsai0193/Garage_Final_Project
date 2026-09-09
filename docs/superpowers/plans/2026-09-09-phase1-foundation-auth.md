@@ -1,17 +1,32 @@
 # Phase 1 — Foundation & Auth Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** วางโครงโปรเจกต์ทั้งสองฝั่ง เชื่อม PostgreSQL ได้ และมีระบบล็อกอินที่แยกสิทธิ์สามบทบาทใช้งานได้จริงตั้งแต่หน้าเว็บถึงฐานข้อมูล
 
 **Architecture:** Backend เป็น FastAPI + SQLAlchemy 2.0 แบบ sync (endpoint เป็น `def` ธรรมดา FastAPI จะรันใน threadpool ให้เอง) แยกชั้นเป็น `models` / `schemas` / `core` / `api` ให้ชัดตั้งแต่ต้นเพราะเฟสหลัง ๆ มีตารางเพิ่มอีกยี่สิบกว่าตาราง ยืนยันตัวตนด้วย JWT เก็บใน localStorage ฝั่ง React แล้วส่งกลับมาเป็น Bearer token การตรวจสิทธิ์ทำที่ dependency ของ FastAPI ไม่ใช่ในตัว endpoint เพื่อให้เฟสหลังเอาไปใช้ซ้ำได้ทันที
 
-**Tech Stack:** Python 3.12, FastAPI, SQLAlchemy 2.0, Alembic, psycopg 3, PyJWT, bcrypt, pytest / React 18 (JavaScript ไม่ใช้ TypeScript), Vite, React Router 6, axios, Vitest + Testing Library / PostgreSQL 15+
+**Tech Stack:** Python 3.12, FastAPI, SQLAlchemy 2.0, Alembic, psycopg 3, PyJWT, bcrypt / React 18 (JavaScript ไม่ใช้ TypeScript), Vite, React Router 6, axios / PostgreSQL 15+
 
 **Spec:**
 - `new_scenario_summary.md` — ข้อตัดสินใจทั้งหมดของระบบ
 - `screens.md` — รายการหน้าจอ 18 หน้าและตารางสิทธิ์
 - `data_model.md` — โครงสร้างฐานข้อมูลและกฎที่ต้องบังคับในฐานข้อมูล
+
+## วิธีตรวจงาน
+
+**เฟส 1 ตรวจด้วยมือ ไม่เขียนเทสต์อัตโนมัติ** ทุก task จบด้วยรายการตรวจที่ทำได้จริงผ่าน Swagger ที่
+`http://localhost:8000/docs` หรือผ่านหน้าเว็บ เพราะสิ่งที่เฟสนี้สร้างเป็นล็อกอินกับหน้าจอ
+ซึ่งกดดูแล้วรู้ทันทีว่าถูกหรือผิด
+
+**เฟส 3-5 จะกลับมาเขียนเทสต์เฉพาะสามเรื่องที่มองด้วยตาไม่เห็น**
+
+| เรื่อง | ทำไมตาไม่เห็น |
+|---|---|
+| ตัดสต็อกแบบ FIFO | หน้าจอขึ้นว่าสำเร็จเหมือนกันหมด ไม่ว่าจะตัดจาก Lot ถูกหรือผิดใบ ต้องเปิดตาราง `stock_lots` ดูทีละแถว |
+| ปัดเศษ VAT | ยอดรวมดูปกติทุกกรณี ต้องบวกทีละบรรทัดเทียบเองถึงจะเห็นว่าเศษหายไปบาทสองบาท |
+| จองเลขที่เอกสาร | เลขข้ามจะเห็นก็ต่อเมื่อไล่เรียงทั้งเดือน และเกิดเฉพาะตอนบันทึกไม่สำเร็จซึ่งจำลองด้วยมือยาก |
+
+โครงเทสต์ (`backend/tests/conftest.py`) ยังอยู่ พร้อมใช้เมื่อถึงเฟส 3 — มันเตรียมฐานข้อมูลเทสต์
+แยกต่างหากและทำให้ทุกเทสต์ย้อนข้อมูลตัวเองทิ้งเมื่อจบ
 
 ## แผนทั้งโครงการ
 
@@ -25,24 +40,23 @@
 | 6 | ขายหน้าร้าน รับประกัน รอบบำรุงรักษา | ยังไม่เขียน |
 | 7 | แดชบอร์ด รายงานการเงิน รายงานภาษี | ยังไม่เขียน |
 
-แต่ละเฟสจบแล้วต้องรันได้และทดสอบได้ด้วยตัวเอง เขียนแผนเฟสถัดไปเมื่อเฟสก่อนหน้าเสร็จ
-
 ---
 
 ## Global Constraints
-
-ข้อบังคับทั้งโครงการ ทุกงานในทุกเฟสอยู่ใต้ข้อเหล่านี้
 
 - **Python 3.12** / **Node 20 ขึ้นไป** / **PostgreSQL 15 ขึ้นไป**
 - **Frontend เป็น JavaScript ไม่ใช้ TypeScript** ไฟล์ React ใช้นามสกุล `.jsx`
 - **เงินทุกคอลัมน์เป็น `numeric(12,2)`** ฝั่ง Python รับเป็น `decimal.Decimal` เสมอ ห้ามใช้ `float` กับค่าเงินไม่ว่ากรณีใด
 - **วันเวลาทุกคอลัมน์เป็น `timestamptz`** ฝั่ง Python ใช้ `datetime.now(timezone.utc)` ห้ามใช้ `datetime.now()` เปล่า
+- **`id` ของทุกตารางเป็น `BigInteger`** ตาม `data_model.md` เพื่อให้คอลัมน์ที่อ้างถึงกันเป็นชนิดเดียวกันทั้งระบบ
 - **ราคาที่แสดงบนหน้าจอและที่คุยกับลูกค้าเป็นราคารวม VAT แล้ว** การถอด VAT ทำตอนออกบิลเท่านั้น
 - **ห้ามใช้ `SEQUENCE` ของ PostgreSQL ออกเลขที่เอกสาร** เพราะ `nextval()` ไม่ย้อนกลับตอน rollback (บังคับใช้จริงในเฟส 5)
 - **ทุกการกระทำต้องบันทึกว่าใครทำ** ตารางที่บันทึกการกระทำต้องมีคอลัมน์ `*_by` อ้าง `users.id`
 - **ข้อความที่ผู้ใช้เห็นเป็นภาษาไทย** รวมถึงข้อความ error จาก API ส่วนชื่อตัวแปร ตาราง และคอลัมน์เป็นภาษาอังกฤษ
 - **บทบาทมีสามค่าเท่านั้น** `admin` / `employee` / `mechanic` ตรงกับตารางสิทธิ์ใน `screens.md`
-- **ทดสอบก่อนเขียนโค้ดเสมอ** ทุกงานเริ่มจากเทสต์ที่ยังไม่ผ่าน
+- **ค่าตั้งทุกตัวใน `config.py` ไม่มีค่าเริ่มต้น** ค่าจริงอยู่ที่ `.env` ที่เดียว ขาดตัวใดตัวหนึ่งแอปต้องไม่สตาร์ต
+- **ทุกโมเดลใหม่ต้องเพิ่มบรรทัด import ใน `alembic/env.py`** ถ้าลืม Alembic จะสร้าง migration ที่ลบตารางทิ้ง
+- **ทุก task จบด้วยการตรวจด้วยมือตามรายการของ task นั้น แล้วจึง commit**
 
 ---
 
@@ -52,7 +66,7 @@
 
 | ไฟล์ | หน้าที่ |
 |---|---|
-| `backend/app/config.py` | อ่านค่าตั้งจาก environment ที่เดียว |
+| `backend/app/config.py` | ประกาศว่าระบบมีค่าตั้งอะไรบ้าง ค่าจริงอยู่ที่ `.env` |
 | `backend/app/db.py` | engine และ session factory |
 | `backend/app/models/base.py` | `Base` ของ SQLAlchemy ที่ทุกโมเดลสืบทอด |
 | `backend/app/models/user.py` | ตาราง users |
@@ -65,9 +79,10 @@
 | `backend/app/main.py` | ประกอบแอป ใส่ CORS รวม router |
 | `backend/app/seed.py` | สร้างผู้ใช้ admin คนแรก |
 | `backend/alembic/` | migration ทั้งหมด |
-| `backend/tests/` | เทสต์ |
+| `backend/tests/conftest.py` | โครงเทสต์ ยังไม่ได้ใช้ในเฟสนี้ เตรียมไว้ให้เฟส 3-5 |
 
-แยก `core/security.py` ออกจาก `core/deps.py` เพราะตัวแรกเป็นฟังก์ชันบริสุทธิ์ที่เทสต์ได้โดยไม่ต้องมีฐานข้อมูล ส่วนตัวหลังผูกกับ request และ session
+แยก `core/security.py` ออกจาก `core/deps.py` เพราะตัวแรกเป็นฟังก์ชันบริสุทธิ์ที่ไม่ยุ่งกับฐานข้อมูล
+ส่วนตัวหลังผูกกับ request และ session
 
 ### Frontend
 
@@ -76,7 +91,7 @@
 | `frontend/src/api/client.js` | axios instance ที่แนบ token และจัดการ 401 ที่เดียว |
 | `frontend/src/auth/AuthContext.jsx` | สถานะผู้ใช้ปัจจุบัน ล็อกอิน ล็อกเอาต์ |
 | `frontend/src/auth/ProtectedRoute.jsx` | กันหน้าที่ต้องล็อกอินและกันหน้าที่บทบาทเข้าไม่ได้ |
-| `frontend/src/nav.js` | นิยามเมนู 18 หน้าและบทบาทที่เห็นแต่ละหน้า เป็นฟังก์ชันบริสุทธิ์จึงเทสต์ได้ตรง |
+| `frontend/src/nav.js` | นิยามเมนู 18 หน้าและบทบาทที่เห็นแต่ละหน้า |
 | `frontend/src/components/AppShell.jsx` | โครงหน้าจอ แถบเมนูซ้าย หัวข้อบน ปุ่มออกจากระบบ |
 | `frontend/src/pages/LoginPage.jsx` | หน้าเข้าสู่ระบบ |
 | `frontend/src/pages/DashboardPage.jsx` | หน้าแดชบอร์ดเปล่าไว้ยืนยันว่าล็อกอินแล้วเข้าถึงได้ |
@@ -84,459 +99,32 @@
 
 ---
 
-## Task 1: โครงโปรเจกต์ ฐานข้อมูล และ health check
+## Task 1: โครงโปรเจกต์ ฐานข้อมูล และ health check — ✅ เสร็จแล้ว
 
-**Files:**
-- Create: `.gitignore`
-- Create: `backend/requirements.txt`
-- Create: `backend/.env.example`
-- Create: `backend/app/__init__.py`
-- Create: `backend/app/config.py`
-- Create: `backend/app/db.py`
-- Create: `backend/app/main.py`
-- Create: `backend/tests/__init__.py`
-- Create: `backend/tests/test_health.py`
+commits `4aa5157`, `6a36358`, `c1cd6cf`, `441515e`
 
-**Interfaces:**
-- Consumes: ไม่มี งานแรก
-- Produces: `app.config.settings` (มี `.database_url`, `.jwt_secret`, `.jwt_algorithm`, `.jwt_expire_minutes`), `app.db.engine`, `app.db.SessionLocal`, `app.main.app`
+สร้าง `.gitignore`, `backend/requirements.txt`, `backend/.env`, `backend/.env.example`,
+`backend/app/config.py`, `backend/app/db.py`, `backend/app/main.py`
 
-- [ ] **Step 1: เตรียม git และโครงโฟลเดอร์**
+ผลที่ตรวจแล้ว — `select 1` ผ่าน engine คืนค่า 1 / `GET /api/health` คืน `{"status":"ok"}` /
+ซ่อนไฟล์ `.env` แล้วแอปไม่สตาร์ตและฟ้องครบทั้งสี่ค่า
 
-```bash
-cd /c/Users/PAT/Desktop/Garage
-git init
-mkdir -p backend/app/models backend/app/schemas backend/app/core backend/app/api backend/tests
-touch backend/app/__init__.py backend/app/models/__init__.py backend/app/schemas/__init__.py backend/app/core/__init__.py backend/app/api/__init__.py backend/tests/__init__.py
-```
-
-- [ ] **Step 2: เขียน `.gitignore`**
-
-```
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-.env
-.pytest_cache/
-node_modules/
-dist/
-.vite/
-.DS_Store
-```
-
-- [ ] **Step 3: เขียน `backend/requirements.txt`**
-
-```
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-sqlalchemy==2.0.36
-alembic==1.14.0
-psycopg[binary]==3.2.3
-pydantic==2.10.4
-pydantic-settings==2.7.0
-pyjwt==2.10.1
-bcrypt==4.2.1
-pytest==8.3.4
-httpx==0.28.1
-```
-
-ถ้า pip แจ้งว่าเวอร์ชันไหนไม่มีให้เลื่อนขึ้นเป็นตัวล่าสุดของ minor เดียวกัน แต่ห้ามปล่อยไม่ pin
-
-- [ ] **Step 4: สร้าง virtualenv และติดตั้ง**
-
-```bash
-cd backend
-python -m venv .venv
-source .venv/Scripts/activate
-pip install -r requirements.txt
-```
-
-บน PowerShell ใช้ `.venv\Scripts\Activate.ps1` แทนบรรทัด source
-
-- [ ] **Step 5: สร้างฐานข้อมูลสองตัว ตัวจริงกับตัวเทสต์**
-
-```bash
-psql -U postgres -c "create user garage with password 'garage';"
-psql -U postgres -c "create database garage owner garage;"
-psql -U postgres -c "create database garage_test owner garage;"
-```
-
-- [ ] **Step 6: เขียน `backend/.env.example`**
-
-```
-DATABASE_URL=postgresql+psycopg://garage:garage@localhost:5432/garage
-JWT_SECRET=เปลี่ยนค่านี้ก่อนใช้งานจริง
-JWT_ALGORITHM=HS256
-JWT_EXPIRE_MINUTES=480
-```
-
-แล้วคัดลอกเป็น `.env` ด้วย `cp .env.example .env`
-
-- [ ] **Step 7: เขียนเทสต์ที่ยังไม่ผ่าน**
-
-สร้าง `backend/tests/test_health.py`
-
-```python
-from fastapi.testclient import TestClient
-
-from app.main import app
-
-
-def test_health_returns_ok():
-    client = TestClient(app)
-    response = client.get("/api/health")
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
-```
-
-- [ ] **Step 8: รันเทสต์ให้เห็นว่าไม่ผ่าน**
-
-Run: `cd backend && python -m pytest tests/test_health.py -v`
-Expected: FAIL ด้วย `ModuleNotFoundError: No module named 'app.main'`
-
-- [ ] **Step 9: เขียน `backend/app/config.py`**
-
-```python
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
-
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
-
-    database_url: str = "postgresql+psycopg://garage:garage@localhost:5432/garage"
-    jwt_secret: str = "change-me"
-    jwt_algorithm: str = "HS256"
-    jwt_expire_minutes: int = 480
-
-
-settings = Settings()
-```
-
-- [ ] **Step 10: เขียน `backend/app/db.py`**
-
-```python
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
-from app.config import settings
-
-engine = create_engine(settings.database_url, pool_pre_ping=True)
-
-SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-```
-
-`expire_on_commit=False` สำคัญ ไม่งั้นหลัง `commit()` แล้วอ่านฟิลด์ของอ็อบเจกต์จะยิง query ใหม่ ซึ่งพังเวลาส่งกลับเป็น response
-
-- [ ] **Step 11: เขียน `backend/app/main.py`**
-
-```python
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-
-app = FastAPI(title="ระบบจัดการอู่ซ่อมรถ", version="0.1.0")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.get("/api/health")
-def health():
-    return {"status": "ok"}
-```
-
-- [ ] **Step 12: รันเทสต์ให้ผ่าน**
-
-Run: `cd backend && python -m pytest tests/test_health.py -v`
-Expected: PASS 1 passed
-
-- [ ] **Step 13: ยืนยันว่าเชื่อมฐานข้อมูลได้จริง**
-
-```bash
-cd backend
-python -c "from sqlalchemy import text; from app.db import engine; print(engine.connect().execute(text('select 1')).scalar())"
-```
-
-Expected: พิมพ์ `1` ถ้าเชื่อมไม่ได้ให้แก้ `DATABASE_URL` ใน `.env` ก่อนไปต่อ
-
-- [ ] **Step 14: Commit**
-
-```bash
-git add .gitignore backend/
-git commit -m "chore: scaffold FastAPI backend with database connection and health check"
-```
+คำอธิบายอยู่ที่ `docs/explain/task-01-scaffold-and-config.md`
 
 ---
 
-## Task 2: ตาราง users และ Alembic migration
+## Task 2: ตาราง users และ Alembic migration — ✅ เสร็จแล้ว
 
-**Files:**
-- Create: `backend/app/models/base.py`
-- Create: `backend/app/models/user.py`
-- Create: `backend/alembic.ini`
-- Create: `backend/alembic/env.py`
-- Create: `backend/alembic/versions/0001_create_users.py`
-- Create: `backend/tests/conftest.py`
-- Create: `backend/tests/test_user_model.py`
+commits `3747b70`, `3b42e54`
 
-**Interfaces:**
-- Consumes: `app.config.settings`, `app.db.engine`
-- Produces: `app.models.base.Base`, `app.models.user.User` (คอลัมน์ `id`, `username`, `password_hash`, `full_name`, `role`, `is_active`, `created_at`), fixture `db_session` และ `client` สำหรับทุกเทสต์ในเฟสถัดไป
+สร้าง `backend/app/models/base.py`, `backend/app/models/user.py`, `backend/alembic.ini`,
+`backend/alembic/env.py`, `backend/alembic/versions/0001_create_users.py`,
+`backend/tests/conftest.py`
 
-- [ ] **Step 1: เขียนเทสต์ที่ยังไม่ผ่าน**
+ผลที่ตรวจแล้ว — `\d users` แสดง `id bigint`, unique `username`, `users_role_check`,
+`created_at timestamptz default now()`
 
-สร้าง `backend/tests/test_user_model.py`
-
-```python
-import pytest
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
-
-from app.models.user import User
-
-
-def test_can_insert_and_read_user(db_session):
-    db_session.add(
-        User(
-            username="somchai",
-            password_hash="x",
-            full_name="สมชาย ใจดี",
-            role="admin",
-        )
-    )
-    db_session.flush()
-
-    user = db_session.scalar(select(User).where(User.username == "somchai"))
-    assert user.full_name == "สมชาย ใจดี"
-    assert user.role == "admin"
-    assert user.is_active is True
-    assert user.created_at is not None
-
-
-def test_username_must_be_unique(db_session):
-    db_session.add(User(username="somchai", password_hash="x", full_name="ก", role="admin"))
-    db_session.flush()
-
-    db_session.add(User(username="somchai", password_hash="y", full_name="ข", role="employee"))
-    with pytest.raises(IntegrityError):
-        db_session.flush()
-
-
-def test_role_must_be_one_of_three(db_session):
-    db_session.add(User(username="ubie", password_hash="x", full_name="ค", role="owner"))
-    with pytest.raises(IntegrityError):
-        db_session.flush()
-```
-
-- [ ] **Step 2: เขียน `backend/tests/conftest.py`**
-
-```python
-import os
-
-os.environ["DATABASE_URL"] = "postgresql+psycopg://garage:garage@localhost:5432/garage_test"
-os.environ["JWT_SECRET"] = "test-secret"
-
-import pytest  # noqa: E402
-from alembic import command  # noqa: E402
-from alembic.config import Config  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import text  # noqa: E402
-from sqlalchemy.orm import sessionmaker  # noqa: E402
-
-from app.config import settings  # noqa: E402
-from app.db import engine  # noqa: E402
-from app.main import app  # noqa: E402
-
-
-@pytest.fixture(scope="session", autouse=True)
-def migrate_test_database():
-    with engine.begin() as connection:
-        connection.execute(text("drop schema public cascade"))
-        connection.execute(text("create schema public"))
-
-    config = Config("alembic.ini")
-    config.set_main_option("sqlalchemy.url", settings.database_url)
-    command.upgrade(config, "head")
-    yield
-
-
-@pytest.fixture()
-def db_session():
-    connection = engine.connect()
-    transaction = connection.begin()
-    Session = sessionmaker(
-        bind=connection,
-        autoflush=False,
-        expire_on_commit=False,
-        join_transaction_mode="create_savepoint",
-    )
-    session = Session()
-    try:
-        yield session
-    finally:
-        session.close()
-        transaction.rollback()
-        connection.close()
-
-
-@pytest.fixture()
-def client(db_session):
-    from app.core.deps import get_db
-
-    app.dependency_overrides[get_db] = lambda: db_session
-    with TestClient(app) as test_client:
-        yield test_client
-    app.dependency_overrides.clear()
-```
-
-ตั้งค่า environment ก่อน import ทุกอย่างเพราะ `settings` ถูกสร้างตอน import โมดูล ถ้าตั้งทีหลังเทสต์จะไปลงฐานข้อมูลจริง
-
-`join_transaction_mode="create_savepoint"` ทำให้ `commit()` ที่เกิดใน endpoint กลายเป็น savepoint ข้างใน transaction ของเทสต์ พอจบเทสต์ rollback ทีเดียวข้อมูลหายหมด ทุกเทสต์จึงเริ่มจากฐานข้อมูลเปล่าเสมอ
-
-fixture `client` import `get_db` ข้างในฟังก์ชันเพราะโมดูลนั้นยังไม่มีจนถึง Task 4 พอถึงตอนนั้นจะใช้ได้ทันทีโดยไม่ต้องแก้ conftest
-
-- [ ] **Step 3: รันเทสต์ให้เห็นว่าไม่ผ่าน**
-
-Run: `cd backend && python -m pytest tests/test_user_model.py -v`
-Expected: FAIL ด้วย `ModuleNotFoundError: No module named 'app.models.user'`
-
-- [ ] **Step 4: เขียน `backend/app/models/base.py`**
-
-```python
-from sqlalchemy.orm import DeclarativeBase
-
-
-class Base(DeclarativeBase):
-    pass
-```
-
-- [ ] **Step 5: เขียน `backend/app/models/user.py`**
-
-```python
-from datetime import datetime
-
-from sqlalchemy import Boolean, CheckConstraint, DateTime, String, func
-from sqlalchemy.orm import Mapped, mapped_column
-
-from app.models.base import Base
-
-
-class User(Base):
-    __tablename__ = "users"
-    __table_args__ = (
-        CheckConstraint(
-            "role in ('admin', 'employee', 'mechanic')",
-            name="users_role_check",
-        ),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    full_name: Mapped[str] = mapped_column(String(120), nullable=False)
-    role: Mapped[str] = mapped_column(String(20), nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
-```
-
-- [ ] **Step 6: ตั้ง Alembic**
-
-```bash
-cd backend
-alembic init alembic
-```
-
-- [ ] **Step 7: แก้ `backend/alembic/env.py`**
-
-แทนที่ทั้งไฟล์ด้วย
-
-```python
-from logging.config import fileConfig
-
-from alembic import context
-from sqlalchemy import engine_from_config, pool
-
-from app.config import settings
-from app.models.base import Base
-import app.models.user  # noqa: F401  ต้อง import ทุกโมเดลเพื่อให้ autogenerate เห็น
-
-config = context.config
-config.set_main_option("sqlalchemy.url", settings.database_url)
-
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
-
-target_metadata = Base.metadata
-
-
-def run_migrations_offline() -> None:
-    context.configure(
-        url=config.get_main_option("sqlalchemy.url"),
-        target_metadata=target_metadata,
-        literal_binds=True,
-        dialect_opts={"paramstyle": "named"},
-    )
-    with context.begin_transaction():
-        context.run_migrations()
-
-
-def run_migrations_online() -> None:
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
-    with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
-        with context.begin_transaction():
-            context.run_migrations()
-
-
-if context.is_offline_mode():
-    run_migrations_offline()
-else:
-    run_migrations_online()
-```
-
-ทุกครั้งที่เพิ่มโมเดลใหม่ในเฟสถัดไปต้องเพิ่มบรรทัด import ที่ไฟล์นี้ ไม่งั้น autogenerate จะมองไม่เห็นแล้วสร้าง migration ที่ลบตารางทิ้ง
-
-- [ ] **Step 8: สร้าง migration**
-
-```bash
-cd backend
-alembic revision --autogenerate -m "create users" --rev-id 0001
-```
-
-เปิดไฟล์ที่ได้ใน `alembic/versions/` ตรวจว่ามี `op.create_table("users", ...)` พร้อม unique constraint ของ `username` และ check constraint ของ `role` ถ้าขาดให้เติมเอง แล้วเปลี่ยนชื่อไฟล์เป็น `0001_create_users.py`
-
-- [ ] **Step 9: รัน migration กับฐานข้อมูลจริง**
-
-```bash
-cd backend
-alembic upgrade head
-psql -U garage -d garage -c "\d users"
-```
-
-Expected: เห็นตาราง users พร้อมคอลัมน์ครบเจ็ดตัว
-
-- [ ] **Step 10: รันเทสต์ให้ผ่าน**
-
-Run: `cd backend && python -m pytest tests/ -v`
-Expected: PASS ทั้งหมด 4 ตัว (health 1 + user model 3)
-
-- [ ] **Step 11: Commit**
-
-```bash
-git add backend/
-git commit -m "feat: add users table with alembic migration and test fixtures"
-```
+คำอธิบายอยู่ที่ `docs/explain/task-02-users-table-and-migrations.md`
 
 ---
 
@@ -544,67 +132,12 @@ git commit -m "feat: add users table with alembic migration and test fixtures"
 
 **Files:**
 - Create: `backend/app/core/security.py`
-- Create: `backend/tests/test_security.py`
 
 **Interfaces:**
 - Consumes: `app.config.settings`
 - Produces: `hash_password(password: str) -> str`, `verify_password(password: str, password_hash: str) -> bool`, `create_access_token(user_id: int, role: str) -> str`, `decode_access_token(token: str) -> dict` (คืน dict ที่มีคีย์ `sub` เป็น str ของ user id และ `role`)
 
-- [ ] **Step 1: เขียนเทสต์ที่ยังไม่ผ่าน**
-
-สร้าง `backend/tests/test_security.py`
-
-```python
-import jwt
-import pytest
-
-from app.core.security import (
-    create_access_token,
-    decode_access_token,
-    hash_password,
-    verify_password,
-)
-
-
-def test_hash_is_not_the_plain_password():
-    hashed = hash_password("รหัสผ่าน123")
-    assert hashed != "รหัสผ่าน123"
-    assert len(hashed) > 20
-
-
-def test_verify_accepts_correct_password():
-    hashed = hash_password("รหัสผ่าน123")
-    assert verify_password("รหัสผ่าน123", hashed) is True
-
-
-def test_verify_rejects_wrong_password():
-    hashed = hash_password("รหัสผ่าน123")
-    assert verify_password("รหัสผ่าน124", hashed) is False
-
-
-def test_same_password_hashes_differently_each_time():
-    assert hash_password("abcdef") != hash_password("abcdef")
-
-
-def test_token_carries_user_id_and_role():
-    token = create_access_token(user_id=7, role="mechanic")
-    payload = decode_access_token(token)
-    assert payload["sub"] == "7"
-    assert payload["role"] == "mechanic"
-
-
-def test_token_signed_with_another_key_is_rejected():
-    token = jwt.encode({"sub": "7", "role": "admin"}, "another-key", algorithm="HS256")
-    with pytest.raises(jwt.PyJWTError):
-        decode_access_token(token)
-```
-
-- [ ] **Step 2: รันเทสต์ให้เห็นว่าไม่ผ่าน**
-
-Run: `cd backend && python -m pytest tests/test_security.py -v`
-Expected: FAIL ด้วย `ModuleNotFoundError: No module named 'app.core.security'`
-
-- [ ] **Step 3: เขียน `backend/app/core/security.py`**
+- [ ] **Step 1: เขียน `backend/app/core/security.py`**
 
 ```python
 from datetime import datetime, timedelta, timezone
@@ -642,17 +175,36 @@ def decode_access_token(token: str) -> dict:
     return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
 ```
 
-bcrypt รับได้สูงสุด 72 ไบต์ ตัวอักษรไทยหนึ่งตัวกินสามไบต์ รหัสผ่านไทย 25 ตัวก็ชนเพดานแล้ว จึงตัดที่ 72 ไบต์ทั้งตอนแฮชและตอนตรวจให้ตรงกัน ไม่งั้น bcrypt จะโยน error ใส่ผู้ใช้
+bcrypt รับได้สูงสุด 72 ไบต์ ตัวอักษรไทยหนึ่งตัวกินสามไบต์ รหัสผ่านไทย 25 ตัวก็ชนเพดานแล้ว จึงตัดที่
+72 ไบต์ทั้งตอนแฮชและตอนตรวจให้ตรงกัน ไม่งั้น bcrypt จะโยน error ใส่ผู้ใช้
 
-- [ ] **Step 4: รันเทสต์ให้ผ่าน**
-
-Run: `cd backend && python -m pytest tests/test_security.py -v`
-Expected: PASS 6 passed
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 2: ตรวจด้วยมือ**
 
 ```bash
-git add backend/app/core/security.py backend/tests/test_security.py
+cd backend
+./.venv/Scripts/python.exe -c "
+from app.core.security import hash_password, verify_password, create_access_token, decode_access_token
+h1 = hash_password('รหัสผ่าน123')
+h2 = hash_password('รหัสผ่าน123')
+print('แฮชไม่ใช่รหัสเดิม  :', h1 != 'รหัสผ่าน123')
+print('แฮชสองครั้งไม่ซ้ำ   :', h1 != h2)
+print('รหัสถูกผ่าน        :', verify_password('รหัสผ่าน123', h1))
+print('รหัสผิดไม่ผ่าน      :', not verify_password('รหัสผ่าน124', h1))
+t = create_access_token(7, 'mechanic')
+p = decode_access_token(t)
+print('token เก็บ id/role  :', p['sub'] == '7' and p['role'] == 'mechanic')
+"
+```
+
+ต้องได้ `True` ทั้งห้าบรรทัด
+
+จุดที่ควรสังเกตคือบรรทัด "แฮชสองครั้งไม่ซ้ำ" — bcrypt สุ่ม salt ใหม่ทุกครั้ง รหัสผ่านเดียวกันจึงได้แฮช
+คนละค่า ทำให้คนที่ขโมยฐานข้อมูลไปไม่สามารถดูออกว่าผู้ใช้คนไหนใช้รหัสผ่านซ้ำกัน
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add backend/app/core/security.py
 git commit -m "feat: add password hashing and jwt helpers"
 ```
 
@@ -666,90 +218,12 @@ git commit -m "feat: add password hashing and jwt helpers"
 - Create: `backend/app/core/deps.py`
 - Create: `backend/app/api/auth.py`
 - Modify: `backend/app/main.py`
-- Create: `backend/tests/test_auth_api.py`
 
 **Interfaces:**
-- Consumes: `User`, `hash_password`, `verify_password`, `create_access_token`, fixture `client` และ `db_session`
+- Consumes: `User`, `verify_password`, `create_access_token`
 - Produces: `app.core.deps.get_db`, `POST /api/auth/login` (รับ `{username, password}` คืน `{access_token, token_type, user}`), `app.schemas.user.UserOut`
 
-- [ ] **Step 1: เขียนเทสต์ที่ยังไม่ผ่าน**
-
-สร้าง `backend/tests/test_auth_api.py`
-
-```python
-import pytest
-
-from app.core.security import hash_password
-from app.models.user import User
-
-
-@pytest.fixture()
-def admin_user(db_session):
-    user = User(
-        username="owner",
-        password_hash=hash_password("secret123"),
-        full_name="เจ้าของอู่",
-        role="admin",
-    )
-    db_session.add(user)
-    db_session.flush()
-    return user
-
-
-def test_login_with_correct_credentials_returns_token_and_user(client, admin_user):
-    response = client.post(
-        "/api/auth/login", json={"username": "owner", "password": "secret123"}
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["token_type"] == "bearer"
-    assert len(body["access_token"]) > 20
-    assert body["user"]["username"] == "owner"
-    assert body["user"]["role"] == "admin"
-    assert "password_hash" not in body["user"]
-
-
-def test_login_with_wrong_password_is_rejected(client, admin_user):
-    response = client.post(
-        "/api/auth/login", json={"username": "owner", "password": "wrong"}
-    )
-    assert response.status_code == 401
-
-
-def test_login_with_unknown_username_is_rejected(client, admin_user):
-    response = client.post(
-        "/api/auth/login", json={"username": "nobody", "password": "secret123"}
-    )
-    assert response.status_code == 401
-
-
-def test_inactive_user_cannot_login(client, db_session):
-    db_session.add(
-        User(
-            username="quit",
-            password_hash=hash_password("secret123"),
-            full_name="ลาออกแล้ว",
-            role="employee",
-            is_active=False,
-        )
-    )
-    db_session.flush()
-
-    response = client.post(
-        "/api/auth/login", json={"username": "quit", "password": "secret123"}
-    )
-    assert response.status_code == 401
-```
-
-เทสต์ตัวที่สามยืนยันว่าข้อความ error ของรหัสผิดกับชื่อผู้ใช้ไม่มีต้องเหมือนกัน คือ 401 ทั้งคู่ ไม่บอกว่าอันไหนผิดเพื่อไม่ให้เดาชื่อผู้ใช้ได้
-
-- [ ] **Step 2: รันเทสต์ให้เห็นว่าไม่ผ่าน**
-
-Run: `cd backend && python -m pytest tests/test_auth_api.py -v`
-Expected: FAIL ด้วย `ModuleNotFoundError: No module named 'app.core.deps'`
-
-- [ ] **Step 3: เขียน `backend/app/schemas/user.py`**
+- [ ] **Step 1: เขียน `backend/app/schemas/user.py`**
 
 ```python
 from typing import Literal
@@ -780,7 +254,7 @@ class UserActiveUpdate(BaseModel):
 
 `UserOut` ไม่มี `password_hash` เลย แฮชจึงไม่มีทางหลุดออก API ไม่ว่าใครจะเผลอส่งอ็อบเจกต์ User ตรง ๆ
 
-- [ ] **Step 4: เขียน `backend/app/schemas/auth.py`**
+- [ ] **Step 2: เขียน `backend/app/schemas/auth.py`**
 
 ```python
 from pydantic import BaseModel
@@ -799,7 +273,7 @@ class TokenResponse(BaseModel):
     user: UserOut
 ```
 
-- [ ] **Step 5: เขียน `backend/app/core/deps.py`**
+- [ ] **Step 3: เขียน `backend/app/core/deps.py`**
 
 ```python
 from typing import Iterator
@@ -819,7 +293,7 @@ def get_db() -> Iterator[Session]:
 
 Task 5 จะเติม `get_current_user` และ `require_roles` ลงไฟล์นี้
 
-- [ ] **Step 6: เขียน `backend/app/api/auth.py`**
+- [ ] **Step 4: เขียน `backend/app/api/auth.py`**
 
 ```python
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -853,22 +327,40 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     )
 ```
 
-- [ ] **Step 7: แก้ `backend/app/main.py` ให้รวม router**
+ข้อความ error ของรหัสผิดกับของชื่อผู้ใช้ไม่มีเป็นข้อความเดียวกันโดยตั้งใจ ถ้าแยกกันคนร้ายจะลองยิง
+ชื่อผู้ใช้ไปเรื่อย ๆ เพื่อดูว่าชื่อไหนมีอยู่จริงในระบบ
 
-เพิ่มสองบรรทัดนี้ ตัว import ไว้บนสุดกับ `include_router` ไว้ก่อน endpoint health
+- [ ] **Step 5: แก้ `backend/app/main.py` ให้รวม router**
 
-```python
-from app.api import auth
+เพิ่ม `from app.api import auth` ไว้บนสุด และ `app.include_router(auth.router)` ไว้ก่อน endpoint health
 
-app.include_router(auth.router)
+- [ ] **Step 6: ตรวจด้วยมือ**
+
+ยังไม่มีผู้ใช้ในฐานข้อมูล จึงสร้างชั่วคราวหนึ่งคนก่อน (Task 7 จะทำสคริปต์ถาวร)
+
+```bash
+cd backend
+./.venv/Scripts/python.exe -c "
+from app.db import SessionLocal
+from app.models.user import User
+from app.core.security import hash_password
+db = SessionLocal()
+db.add(User(username='owner', password_hash=hash_password('owner1234'), full_name='เจ้าของอู่', role='admin'))
+db.commit()
+print('สร้างผู้ใช้ owner แล้ว')
+"
+uvicorn app.main:app --reload
 ```
 
-- [ ] **Step 8: รันเทสต์ให้ผ่าน**
+เปิด `http://localhost:8000/docs` แล้วตรวจทีละข้อ
 
-Run: `cd backend && python -m pytest tests/ -v`
-Expected: PASS ทั้งหมด 14 ตัว
+1. `POST /api/auth/login` ด้วย `owner` / `owner1234` → ได้ 200 พร้อม `access_token` และ `user.role` เป็น `admin`
+2. ใน response ต้อง **ไม่มี** `password_hash` โผล่มา
+3. ล็อกอินด้วยรหัสผิด → 401 พร้อมข้อความ `ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง`
+4. ล็อกอินด้วยชื่อที่ไม่มีในระบบ → 401 ข้อความ**เหมือนกันเป๊ะ**กับข้อ 3
+5. ปิดบัญชีด้วย `update users set is_active = false where username = 'owner';` แล้วล็อกอินอีกครั้ง → 401 (อย่าลืมเปิดคืน)
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add backend/
@@ -882,91 +374,12 @@ git commit -m "feat: add login endpoint returning jwt and user profile"
 **Files:**
 - Modify: `backend/app/core/deps.py`
 - Modify: `backend/app/api/auth.py`
-- Create: `backend/tests/test_permissions.py`
 
 **Interfaces:**
 - Consumes: `get_db`, `decode_access_token`, `User`
 - Produces: `get_current_user() -> User`, `require_roles(*roles: str)` (คืน dependency ที่ให้ `User` และโยน 403 ถ้าบทบาทไม่ตรง), `GET /api/auth/me`
 
-- [ ] **Step 1: เขียนเทสต์ที่ยังไม่ผ่าน**
-
-สร้าง `backend/tests/test_permissions.py`
-
-```python
-import pytest
-from fastapi import Depends
-
-from app.core.deps import require_roles
-from app.core.security import create_access_token, hash_password
-from app.main import app
-from app.models.user import User
-
-
-@pytest.fixture()
-def users(db_session):
-    created = {}
-    for role in ("admin", "employee", "mechanic"):
-        user = User(
-            username=role,
-            password_hash=hash_password("secret123"),
-            full_name=f"ผู้ใช้ {role}",
-            role=role,
-        )
-        db_session.add(user)
-        created[role] = user
-    db_session.flush()
-    return created
-
-
-def auth_header(user):
-    return {"Authorization": f"Bearer {create_access_token(user.id, user.role)}"}
-
-
-def test_me_returns_the_logged_in_user(client, users):
-    response = client.get("/api/auth/me", headers=auth_header(users["mechanic"]))
-
-    assert response.status_code == 200
-    assert response.json()["username"] == "mechanic"
-    assert response.json()["role"] == "mechanic"
-
-
-def test_me_without_token_is_rejected(client, users):
-    assert client.get("/api/auth/me").status_code == 401
-
-
-def test_me_with_garbage_token_is_rejected(client, users):
-    response = client.get("/api/auth/me", headers={"Authorization": "Bearer not-a-token"})
-    assert response.status_code == 401
-
-
-def test_deactivated_user_token_stops_working(client, users, db_session):
-    header = auth_header(users["employee"])
-    users["employee"].is_active = False
-    db_session.flush()
-
-    assert client.get("/api/auth/me", headers=header).status_code == 401
-
-
-def test_require_roles_allows_listed_role_and_blocks_others(client, users):
-    @app.get("/api/test-admin-only")
-    def admin_only(user: User = Depends(require_roles("admin"))):
-        return {"ok": True}
-
-    assert client.get("/api/test-admin-only", headers=auth_header(users["admin"])).status_code == 200
-    assert client.get("/api/test-admin-only", headers=auth_header(users["employee"])).status_code == 403
-    assert client.get("/api/test-admin-only", headers=auth_header(users["mechanic"])).status_code == 403
-```
-
-เทสต์ตัวสุดท้ายสร้าง endpoint ปลอมขึ้นมาชั่วคราวเพื่อทดสอบ `require_roles` โดยตรง จะได้ไม่ต้องรอจนมี endpoint จริงในเฟสหลัง
-
-- [ ] **Step 2: รันเทสต์ให้เห็นว่าไม่ผ่าน**
-
-Run: `cd backend && python -m pytest tests/test_permissions.py -v`
-Expected: FAIL ด้วย `ImportError: cannot import name 'require_roles'`
-
-- [ ] **Step 3: เติม `backend/app/core/deps.py`**
-
-แทนที่ทั้งไฟล์ด้วย
+- [ ] **Step 1: เขียนทับ `backend/app/core/deps.py`**
 
 ```python
 from typing import Iterator
@@ -1028,11 +441,14 @@ def require_roles(*roles: str):
     return dependency
 ```
 
-`get_current_user` อ่านผู้ใช้จากฐานข้อมูลใหม่ทุกครั้งแทนที่จะเชื่อ `role` ในโทเคน เพราะเจ้าของอู่อาจปิดบัญชีหรือเปลี่ยนบทบาทระหว่างที่โทเคนเก่ายังไม่หมดอายุ
+`get_current_user` อ่านผู้ใช้จากฐานข้อมูลใหม่ทุกครั้งแทนที่จะเชื่อ `role` ในโทเคน เพราะเจ้าของอู่
+อาจปิดบัญชีหรือเปลี่ยนบทบาทระหว่างที่โทเคนเก่ายังไม่หมดอายุ
 
-- [ ] **Step 4: เติม endpoint `/me` ใน `backend/app/api/auth.py`**
+**401 กับ 403 ต่างกัน** 401 คือ "ไม่รู้ว่าคุณเป็นใคร" ส่วน 403 คือ "รู้ว่าคุณเป็นใครแต่คุณเข้าตรงนี้ไม่ได้"
 
-เพิ่ม import `get_current_user` แล้วต่อท้ายไฟล์
+- [ ] **Step 2: เติม endpoint `/me` ใน `backend/app/api/auth.py`**
+
+เพิ่ม `get_current_user` เข้าไปใน import แล้วต่อท้ายไฟล์
 
 ```python
 @router.get("/me", response_model=UserOut)
@@ -1040,12 +456,18 @@ def me(user: User = Depends(get_current_user)):
     return user
 ```
 
-- [ ] **Step 5: รันเทสต์ให้ผ่าน**
+- [ ] **Step 3: ตรวจด้วยมือ**
 
-Run: `cd backend && python -m pytest tests/ -v`
-Expected: PASS ทั้งหมด 19 ตัว
+เปิด `http://localhost:8000/docs` กด **Authorize** มุมขวาบน แล้ววาง `access_token` ที่ได้จากการล็อกอิน
 
-- [ ] **Step 6: Commit**
+1. `GET /api/auth/me` พร้อม token → 200 คืนข้อมูลผู้ใช้ที่ล็อกอินอยู่
+2. `GET /api/auth/me` โดยไม่ส่ง token → 401
+3. ส่ง token มั่ว ๆ เช่น `Bearer not-a-token` → 401
+4. ปิดบัญชีด้วย SQL ระหว่างที่ token ยังไม่หมดอายุ แล้วเรียก `/me` ด้วย token เดิม → **401 ทันที** ไม่ต้องรอหมดอายุ (อย่าลืมเปิดคืน)
+
+ข้อ 4 คือหัวใจของ task นี้ ถ้ามันคืน 200 แปลว่าโค้ดกำลังเชื่อข้อมูลในโทเคนแทนที่จะอ่านจากฐานข้อมูล
+
+- [ ] **Step 4: Commit**
 
 ```bash
 git add backend/
@@ -1059,145 +481,12 @@ git commit -m "feat: add role-based dependencies and current user endpoint"
 **Files:**
 - Create: `backend/app/api/users.py`
 - Modify: `backend/app/main.py`
-- Create: `backend/tests/test_users_api.py`
 
 **Interfaces:**
 - Consumes: `require_roles`, `get_db`, `hash_password`, `UserCreate`, `UserActiveUpdate`, `UserOut`
 - Produces: `GET /api/users`, `POST /api/users`, `PATCH /api/users/{user_id}/active` ทั้งสามต้องเป็น admin เท่านั้น
 
-- [ ] **Step 1: เขียนเทสต์ที่ยังไม่ผ่าน**
-
-สร้าง `backend/tests/test_users_api.py`
-
-```python
-import pytest
-
-from app.core.security import create_access_token, hash_password, verify_password
-from app.models.user import User
-
-
-@pytest.fixture()
-def admin(db_session):
-    user = User(
-        username="owner",
-        password_hash=hash_password("secret123"),
-        full_name="เจ้าของอู่",
-        role="admin",
-    )
-    db_session.add(user)
-    db_session.flush()
-    return user
-
-
-@pytest.fixture()
-def employee(db_session):
-    user = User(
-        username="staff",
-        password_hash=hash_password("secret123"),
-        full_name="พนักงานหน้าร้าน",
-        role="employee",
-    )
-    db_session.add(user)
-    db_session.flush()
-    return user
-
-
-def auth_header(user):
-    return {"Authorization": f"Bearer {create_access_token(user.id, user.role)}"}
-
-
-def test_admin_can_list_users(client, admin, employee):
-    response = client.get("/api/users", headers=auth_header(admin))
-
-    assert response.status_code == 200
-    usernames = [row["username"] for row in response.json()]
-    assert usernames == ["owner", "staff"]
-
-
-def test_employee_cannot_list_users(client, admin, employee):
-    assert client.get("/api/users", headers=auth_header(employee)).status_code == 403
-
-
-def test_admin_can_create_a_mechanic(client, admin, db_session):
-    response = client.post(
-        "/api/users",
-        headers=auth_header(admin),
-        json={
-            "username": "chang",
-            "password": "secret123",
-            "full_name": "ช่างหนึ่ง",
-            "role": "mechanic",
-        },
-    )
-
-    assert response.status_code == 201
-    assert response.json()["role"] == "mechanic"
-
-    created = db_session.get(User, response.json()["id"])
-    assert created.password_hash != "secret123"
-    assert verify_password("secret123", created.password_hash) is True
-
-
-def test_duplicate_username_is_rejected(client, admin):
-    assert (
-        client.post(
-            "/api/users",
-            headers=auth_header(admin),
-            json={
-                "username": "owner",
-                "password": "secret123",
-                "full_name": "ซ้ำ",
-                "role": "employee",
-            },
-        ).status_code
-        == 409
-    )
-
-
-def test_unknown_role_is_rejected(client, admin):
-    assert (
-        client.post(
-            "/api/users",
-            headers=auth_header(admin),
-            json={
-                "username": "boss",
-                "password": "secret123",
-                "full_name": "บทบาทมั่ว",
-                "role": "owner",
-            },
-        ).status_code
-        == 422
-    )
-
-
-def test_admin_can_deactivate_another_user(client, admin, employee):
-    response = client.patch(
-        f"/api/users/{employee.id}/active",
-        headers=auth_header(admin),
-        json={"is_active": False},
-    )
-
-    assert response.status_code == 200
-    assert response.json()["is_active"] is False
-
-
-def test_admin_cannot_deactivate_themselves(client, admin):
-    response = client.patch(
-        f"/api/users/{admin.id}/active",
-        headers=auth_header(admin),
-        json={"is_active": False},
-    )
-    assert response.status_code == 400
-```
-
-เทสต์ตัวสุดท้ายกันเคสที่ admin คนเดียวของระบบปิดบัญชีตัวเองแล้วไม่มีใครเข้าไปเปิดคืนได้อีกเลย
-
-- [ ] **Step 2: รันเทสต์ให้เห็นว่าไม่ผ่าน**
-
-Run: `cd backend && python -m pytest tests/test_users_api.py -v`
-Expected: FAIL ทุกตัวด้วย 404 เพราะยังไม่มี route
-
-- [ ] **Step 3: เขียน `backend/app/api/users.py`**
+- [ ] **Step 1: เขียน `backend/app/api/users.py`**
 
 ```python
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -1268,7 +557,9 @@ def set_user_active(
     return user
 ```
 
-- [ ] **Step 4: แก้ `backend/app/main.py` ให้รวม router ใหม่**
+เงื่อนไขสุดท้ายกันเคสที่ admin คนเดียวของระบบปิดบัญชีตัวเอง แล้วไม่มีใครเข้าไปเปิดคืนได้อีกเลย
+
+- [ ] **Step 2: แก้ `backend/app/main.py`**
 
 ```python
 from app.api import auth, users
@@ -1277,12 +568,30 @@ app.include_router(auth.router)
 app.include_router(users.router)
 ```
 
-- [ ] **Step 5: รันเทสต์ให้ผ่าน**
+- [ ] **Step 3: ตรวจด้วยมือ**
 
-Run: `cd backend && python -m pytest tests/ -v`
-Expected: PASS ทั้งหมด 26 ตัว
+ล็อกอินเป็น `owner` แล้ว Authorize ใน Swagger
 
-- [ ] **Step 6: Commit**
+1. `POST /api/users` สร้างช่าง `{"username":"chang","password":"chang1234","full_name":"ช่างหนึ่ง","role":"mechanic"}` → 201
+2. สร้างพนักงาน `{"username":"staff","password":"staff1234","full_name":"พนักงานหน้าร้าน","role":"employee"}` → 201
+3. `GET /api/users` → 200 เห็นสามคน
+4. สร้างซ้ำชื่อ `owner` → 409 `ชื่อผู้ใช้นี้ถูกใช้ไปแล้ว`
+5. สร้างด้วย `"role":"owner"` → **422** (FastAPI ปฏิเสธตั้งแต่ตรวจรูปแบบ ยังไม่ทันเข้าโค้ดเรา)
+6. สร้างด้วยรหัสผ่าน 3 ตัว → 422
+7. `PATCH /api/users/{id ของ staff}/active` ด้วย `{"is_active": false}` → 200
+8. `PATCH` ปิดบัญชีตัวเอง → 400 `ปิดการใช้งานบัญชีของตัวเองไม่ได้`
+9. ล็อกอินเป็น `chang` เอา token ไป Authorize แล้วเรียก `GET /api/users` → **403**
+
+ข้อ 9 คือข้อสำคัญที่สุด มันพิสูจน์ว่า `require_roles` ทำงาน ตรวจในฐานข้อมูลด้วยว่ารหัสผ่านถูกเก็บ
+เป็นแฮชจริง
+
+```bash
+psql -U garage -h localhost -d garage -c "select username, role, left(password_hash, 20) from users;"
+```
+
+คอลัมน์สุดท้ายต้องขึ้นต้นด้วย `$2b$` ไม่ใช่รหัสผ่านที่พิมพ์เข้าไป
+
+- [ ] **Step 4: Commit**
 
 ```bash
 git add backend/
@@ -1295,48 +604,12 @@ git commit -m "feat: add admin-only user management endpoints"
 
 **Files:**
 - Create: `backend/app/seed.py`
-- Create: `backend/tests/test_seed.py`
 
 **Interfaces:**
 - Consumes: `SessionLocal`, `User`, `hash_password`
 - Produces: `create_admin(db, username, password, full_name) -> User` และรันจาก command line ได้
 
-- [ ] **Step 1: เขียนเทสต์ที่ยังไม่ผ่าน**
-
-สร้าง `backend/tests/test_seed.py`
-
-```python
-import pytest
-from sqlalchemy import select
-
-from app.core.security import verify_password
-from app.models.user import User
-from app.seed import create_admin
-
-
-def test_create_admin_inserts_an_active_admin(db_session):
-    user = create_admin(db_session, "owner", "secret123", "เจ้าของอู่")
-
-    assert user.role == "admin"
-    assert user.is_active is True
-    assert verify_password("secret123", user.password_hash) is True
-
-
-def test_create_admin_refuses_duplicate_username(db_session):
-    create_admin(db_session, "owner", "secret123", "เจ้าของอู่")
-
-    with pytest.raises(ValueError):
-        create_admin(db_session, "owner", "secret123", "ซ้ำ")
-
-    assert len(db_session.scalars(select(User)).all()) == 1
-```
-
-- [ ] **Step 2: รันเทสต์ให้เห็นว่าไม่ผ่าน**
-
-Run: `cd backend && python -m pytest tests/test_seed.py -v`
-Expected: FAIL ด้วย `ModuleNotFoundError: No module named 'app.seed'`
-
-- [ ] **Step 3: เขียน `backend/app/seed.py`**
+- [ ] **Step 1: เขียน `backend/app/seed.py`**
 
 ```python
 import argparse
@@ -1382,40 +655,31 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: รันเทสต์ให้ผ่าน**
+**ทำไมต้องมีสคริปต์นี้** เพราะ `POST /api/users` ต้องเป็น admin ถึงจะเรียกได้ แต่ตอนติดตั้งระบบใหม่
+ยังไม่มี admin สักคน สคริปต์นี้คือทางเดียวที่จะสร้างคนแรกโดยไม่ต้องเปิดช่องโหว่ให้ใครก็สมัครเป็น
+admin ได้ผ่าน API
 
-Run: `cd backend && python -m pytest tests/ -v`
-Expected: PASS ทั้งหมด 28 ตัว
-
-- [ ] **Step 5: สร้าง admin จริงในฐานข้อมูลจริง**
+- [ ] **Step 2: ตรวจด้วยมือ**
 
 ```bash
 cd backend
-python -m app.seed --username owner --password owner1234 --full-name "เจ้าของอู่"
+./.venv/Scripts/python.exe -m app.seed --username boss --password boss1234 --full-name "เจ้าของอู่คนที่สอง"
 ```
 
-Expected: พิมพ์ `สร้างผู้ใช้ owner เรียบร้อย`
-
-- [ ] **Step 6: ยืนยันว่าล็อกอินผ่าน API จริงได้**
-
-เปิดเซิร์ฟเวอร์ในอีกหน้าต่าง
+1. ครั้งแรกต้องพิมพ์ `สร้างผู้ใช้ boss เรียบร้อย`
+2. รันคำสั่งเดิมซ้ำ → ต้องขึ้น `ValueError: มีผู้ใช้ชื่อ boss อยู่แล้ว` และในฐานข้อมูลต้องมี `boss` แค่คนเดียว
+3. ล็อกอินด้วย `boss` / `boss1234` ผ่าน Swagger ได้จริง
 
 ```bash
-cd backend && uvicorn app.main:app --reload
+psql -U garage -h localhost -d garage -c "select count(*) from users where username = 'boss';"
 ```
 
-แล้วยิงคำสั่ง
+ต้องได้ `1`
+
+- [ ] **Step 3: Commit**
 
 ```bash
-curl -X POST http://localhost:8000/api/auth/login -H "Content-Type: application/json" -d "{\"username\":\"owner\",\"password\":\"owner1234\"}"
-```
-
-Expected: ได้ JSON ที่มี `access_token` และ `user.role` เป็น `admin` เปิด http://localhost:8000/docs ดู Swagger ได้ด้วย
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add backend/
+git add backend/app/seed.py
 git commit -m "feat: add seed script for first admin user"
 ```
 
@@ -1424,24 +688,18 @@ git commit -m "feat: add seed script for first admin user"
 ## Task 8: โครง React และหน้าเข้าสู่ระบบ
 
 **Files:**
-- Create: `frontend/package.json`
-- Create: `frontend/vite.config.js`
-- Create: `frontend/index.html`
-- Create: `frontend/.env.example`
-- Create: `frontend/src/main.jsx`
-- Create: `frontend/src/App.jsx`
-- Create: `frontend/src/styles.css`
+- Create: `frontend/` ทั้งโปรเจกต์
 - Create: `frontend/src/api/client.js`
 - Create: `frontend/src/auth/AuthContext.jsx`
 - Create: `frontend/src/pages/LoginPage.jsx`
-- Create: `frontend/tests/setup.js`
-- Create: `frontend/tests/LoginPage.test.jsx`
+- Create: `frontend/src/styles.css`
+- Create: `frontend/src/main.jsx`, `frontend/src/App.jsx`
 
 **Interfaces:**
 - Consumes: `POST /api/auth/login`, `GET /api/auth/me`
 - Produces: `useAuth()` คืน `{ user, loading, login(username, password), logout() }`, default export `client` จาก `api/client.js`
 
-- [ ] **Step 1: สร้างโปรเจกต์ frontend**
+- [ ] **Step 1: สร้างโปรเจกต์**
 
 ```bash
 cd /c/Users/PAT/Desktop/Garage
@@ -1449,121 +707,17 @@ npm create vite@latest frontend -- --template react
 cd frontend
 npm install
 npm install react-router-dom@6.28.0 axios@1.7.9
-npm install -D vitest@2.1.8 jsdom@25.0.1 @testing-library/react@16.1.0 @testing-library/jest-dom@6.6.3 @testing-library/user-event@14.5.2
 ```
 
-ลบไฟล์ตัวอย่างที่ Vite แถมมา `src/App.css` และ `src/assets/`
+ลบไฟล์ตัวอย่างที่ Vite แถมมา — `src/App.css`, `src/index.css`, `src/assets/`
 
-- [ ] **Step 2: ตั้งค่า Vitest ใน `frontend/vite.config.js`**
-
-```js
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-
-export default defineConfig({
-  plugins: [react()],
-  test: {
-    environment: 'jsdom',
-    globals: true,
-    setupFiles: ['./tests/setup.js'],
-  },
-})
-```
-
-เพิ่มสคริปต์ใน `package.json`
-
-```json
-"scripts": {
-  "dev": "vite",
-  "build": "vite build",
-  "preview": "vite preview",
-  "test": "vitest run"
-}
-```
-
-- [ ] **Step 3: เขียน `frontend/tests/setup.js`**
-
-```js
-import '@testing-library/jest-dom/vitest'
-```
-
-- [ ] **Step 4: เขียน `frontend/.env.example`**
+- [ ] **Step 2: เขียน `frontend/.env.example` แล้วก๊อปเป็น `.env`**
 
 ```
 VITE_API_URL=http://localhost:8000
 ```
 
-แล้ว `cp .env.example .env`
-
-- [ ] **Step 5: เขียนเทสต์ที่ยังไม่ผ่าน**
-
-สร้าง `frontend/tests/LoginPage.test.jsx`
-
-```jsx
-import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-
-import client from '../src/api/client'
-import { AuthProvider } from '../src/auth/AuthContext'
-import LoginPage from '../src/pages/LoginPage'
-
-function renderLoginPage() {
-  return render(
-    <MemoryRouter>
-      <AuthProvider>
-        <LoginPage />
-      </AuthProvider>
-    </MemoryRouter>,
-  )
-}
-
-describe('LoginPage', () => {
-  beforeEach(() => {
-    localStorage.clear()
-    vi.restoreAllMocks()
-  })
-
-  it('เก็บ token ลง localStorage เมื่อล็อกอินสำเร็จ', async () => {
-    vi.spyOn(client, 'post').mockResolvedValue({
-      data: {
-        access_token: 'token-123',
-        token_type: 'bearer',
-        user: { id: 1, username: 'owner', full_name: 'เจ้าของอู่', role: 'admin', is_active: true },
-      },
-    })
-
-    renderLoginPage()
-    await userEvent.type(screen.getByLabelText('ชื่อผู้ใช้'), 'owner')
-    await userEvent.type(screen.getByLabelText('รหัสผ่าน'), 'owner1234')
-    await userEvent.click(screen.getByRole('button', { name: 'เข้าสู่ระบบ' }))
-
-    expect(localStorage.getItem('token')).toBe('token-123')
-  })
-
-  it('แสดงข้อความผิดพลาดและไม่เก็บ token เมื่อรหัสผ่านผิด', async () => {
-    vi.spyOn(client, 'post').mockRejectedValue({
-      response: { status: 401, data: { detail: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' } },
-    })
-
-    renderLoginPage()
-    await userEvent.type(screen.getByLabelText('ชื่อผู้ใช้'), 'owner')
-    await userEvent.type(screen.getByLabelText('รหัสผ่าน'), 'wrong')
-    await userEvent.click(screen.getByRole('button', { name: 'เข้าสู่ระบบ' }))
-
-    expect(await screen.findByText('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง')).toBeInTheDocument()
-    expect(localStorage.getItem('token')).toBeNull()
-  })
-})
-```
-
-- [ ] **Step 6: รันเทสต์ให้เห็นว่าไม่ผ่าน**
-
-Run: `cd frontend && npm test`
-Expected: FAIL ด้วยหาไฟล์ `../src/api/client` ไม่เจอ
-
-- [ ] **Step 7: เขียน `frontend/src/api/client.js`**
+- [ ] **Step 3: เขียน `frontend/src/api/client.js`**
 
 ```js
 import axios from 'axios'
@@ -1580,10 +734,24 @@ client.interceptors.request.use((config) => {
   return config
 })
 
+client.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token')
+    }
+    return Promise.reject(error)
+  },
+)
+
 export default client
 ```
 
-- [ ] **Step 8: เขียน `frontend/src/auth/AuthContext.jsx`**
+interceptor ตัวแรกแนบ token ให้ทุก request อัตโนมัติ จะได้ไม่ต้องเขียน header เองทุกหน้า
+ตัวที่สองลบ token ทิ้งเมื่อเซิร์ฟเวอร์ตอบ 401 ซึ่งแปลว่าโทเคนหมดอายุหรือบัญชีถูกปิด
+ไม่ต้องสั่งเปลี่ยนหน้าตรงนี้ เพราะ `ProtectedRoute` ใน Task 9 จะพาไปหน้าล็อกอินเองในการ render รอบถัดไป
+
+- [ ] **Step 4: เขียน `frontend/src/auth/AuthContext.jsx`**
 
 ```jsx
 import { createContext, useContext, useEffect, useState } from 'react'
@@ -1637,7 +805,11 @@ export function useAuth() {
 }
 ```
 
-- [ ] **Step 9: เขียน `frontend/src/pages/LoginPage.jsx`**
+`useEffect` ตอนเปิดเว็บทำหน้าที่สำคัญ — ถ้ามี token ค้างใน localStorage ให้ถามเซิร์ฟเวอร์ว่ายังใช้ได้ไหม
+ผู้ใช้จึงไม่ต้องล็อกอินใหม่ทุกครั้งที่รีเฟรชหน้า และถ้าโทเคนใช้ไม่ได้แล้วก็ลบทิ้งทันที
+`loading` มีไว้กันหน้าจอกะพริบไปหน้าล็อกอินระหว่างที่ยังถามเซิร์ฟเวอร์ไม่เสร็จ
+
+- [ ] **Step 5: เขียน `frontend/src/pages/LoginPage.jsx`**
 
 ```jsx
 import { useState } from 'react'
@@ -1700,7 +872,9 @@ export default function LoginPage() {
 }
 ```
 
-- [ ] **Step 10: เขียน `frontend/src/styles.css`**
+`disabled={submitting}` กันผู้ใช้กดปุ่มรัว ๆ ตอนเน็ตช้าแล้วยิงคำขอซ้ำหลายรอบ
+
+- [ ] **Step 6: เขียน `frontend/src/styles.css`**
 
 ```css
 * {
@@ -1767,7 +941,7 @@ body {
 }
 ```
 
-- [ ] **Step 11: เขียน `frontend/src/main.jsx` และ `App.jsx` ชั่วคราว**
+- [ ] **Step 7: เขียน `frontend/src/main.jsx` และ `App.jsx` ชั่วคราว**
 
 `main.jsx`
 
@@ -1808,12 +982,19 @@ export default function App() {
 }
 ```
 
-- [ ] **Step 12: รันเทสต์ให้ผ่าน**
+- [ ] **Step 8: ตรวจด้วยมือ**
 
-Run: `cd frontend && npm test`
-Expected: PASS 2 passed
+เปิดสองหน้าต่าง `uvicorn app.main:app --reload` กับ `npm run dev` แล้วเข้า `http://localhost:5173`
 
-- [ ] **Step 13: Commit**
+1. เห็นหน้าล็อกอิน
+2. ใส่รหัสผิด → เห็นข้อความ `ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง` บนหน้าจอ ไม่ใช่แค่ใน console
+3. ใส่ `owner` / `owner1234` → ไม่มี error เปิด DevTools แท็บ Application → Local Storage เห็นคีย์ `token` มีค่าอยู่
+4. แท็บ Network ดู request `login` → มี `Authorization` header ในคำขอถัดไป
+5. ปิด uvicorn แล้วลองล็อกอิน → เห็น `เชื่อมต่อเซิร์ฟเวอร์ไม่ได้`
+
+ข้อ 5 พิสูจน์ว่าโค้ดแยกกรณี "เซิร์ฟเวอร์ตอบว่าผิด" ออกจาก "ติดต่อเซิร์ฟเวอร์ไม่ได้"
+
+- [ ] **Step 9: Commit**
 
 ```bash
 git add frontend/
@@ -1831,123 +1012,12 @@ git commit -m "feat: add react scaffold with auth context and login page"
 - Create: `frontend/src/pages/DashboardPage.jsx`
 - Modify: `frontend/src/App.jsx`
 - Modify: `frontend/src/styles.css`
-- Create: `frontend/tests/nav.test.js`
-- Create: `frontend/tests/ProtectedRoute.test.jsx`
 
 **Interfaces:**
 - Consumes: `useAuth()`
 - Produces: `MENU` (อาร์เรย์ของ `{ path, label, roles }`), `menuForRole(role)`, `<ProtectedRoute roles={[...]}>`
 
-- [ ] **Step 1: เขียนเทสต์ที่ยังไม่ผ่าน**
-
-สร้าง `frontend/tests/nav.test.js`
-
-```js
-import { describe, expect, it } from 'vitest'
-
-import { MENU, menuForRole } from '../src/nav'
-
-describe('เมนูตามสิทธิ์', () => {
-  it('มีครบ 18 หน้าตามขอบเขตของระบบ', () => {
-    expect(MENU).toHaveLength(18)
-  })
-
-  it('admin เห็นทุกหน้า', () => {
-    expect(menuForRole('admin')).toHaveLength(18)
-  })
-
-  it('employee ไม่เห็นรายงานการเงิน รายงานภาษี และตั้งค่า', () => {
-    const paths = menuForRole('employee').map((item) => item.path)
-
-    expect(paths).not.toContain('/reports/financial')
-    expect(paths).not.toContain('/reports/tax')
-    expect(paths).not.toContain('/settings')
-    expect(paths).toContain('/billing')
-  })
-
-  it('mechanic ไม่เห็นหน้าที่เกี่ยวกับเงินและรายงาน', () => {
-    const paths = menuForRole('mechanic').map((item) => item.path)
-
-    expect(paths).not.toContain('/billing')
-    expect(paths).not.toContain('/counter-sale')
-    expect(paths).not.toContain('/invoices')
-    expect(paths).not.toContain('/reports/financial')
-    expect(paths).toContain('/jobs')
-  })
-
-  it('บทบาทที่ไม่รู้จักไม่เห็นเมนูอะไรเลย', () => {
-    expect(menuForRole('stranger')).toHaveLength(0)
-  })
-})
-```
-
-สร้าง `frontend/tests/ProtectedRoute.test.jsx`
-
-```jsx
-import { render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-
-import client from '../src/api/client'
-import { AuthProvider } from '../src/auth/AuthContext'
-import ProtectedRoute from '../src/auth/ProtectedRoute'
-
-function renderAt(path, element) {
-  return render(
-    <MemoryRouter initialEntries={[path]}>
-      <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<p>หน้าเข้าสู่ระบบ</p>} />
-          <Route path="/" element={<p>หน้าแรก</p>} />
-          <Route path="/secret" element={element} />
-        </Routes>
-      </AuthProvider>
-    </MemoryRouter>,
-  )
-}
-
-describe('ProtectedRoute', () => {
-  beforeEach(() => {
-    localStorage.clear()
-    vi.restoreAllMocks()
-  })
-
-  it('ส่งไปหน้าเข้าสู่ระบบเมื่อยังไม่ได้ล็อกอิน', async () => {
-    renderAt('/secret', <ProtectedRoute><p>ความลับ</p></ProtectedRoute>)
-
-    expect(await screen.findByText('หน้าเข้าสู่ระบบ')).toBeInTheDocument()
-  })
-
-  it('ให้ผ่านเมื่อบทบาทตรงกับที่กำหนด', async () => {
-    localStorage.setItem('token', 'token-123')
-    vi.spyOn(client, 'get').mockResolvedValue({
-      data: { id: 1, username: 'owner', full_name: 'เจ้าของอู่', role: 'admin', is_active: true },
-    })
-
-    renderAt('/secret', <ProtectedRoute roles={['admin']}><p>ความลับ</p></ProtectedRoute>)
-
-    expect(await screen.findByText('ความลับ')).toBeInTheDocument()
-  })
-
-  it('ส่งกลับหน้าแรกเมื่อล็อกอินแล้วแต่บทบาทไม่ได้รับอนุญาต', async () => {
-    localStorage.setItem('token', 'token-123')
-    vi.spyOn(client, 'get').mockResolvedValue({
-      data: { id: 2, username: 'chang', full_name: 'ช่างหนึ่ง', role: 'mechanic', is_active: true },
-    })
-
-    renderAt('/secret', <ProtectedRoute roles={['admin']}><p>ความลับ</p></ProtectedRoute>)
-
-    await waitFor(() => expect(screen.getByText('หน้าแรก')).toBeInTheDocument())
-  })
-})
-```
-
-- [ ] **Step 2: รันเทสต์ให้เห็นว่าไม่ผ่าน**
-
-Run: `cd frontend && npm test`
-Expected: FAIL หาไฟล์ `../src/nav` และ `../src/auth/ProtectedRoute` ไม่เจอ
-
-- [ ] **Step 3: เขียน `frontend/src/nav.js`**
+- [ ] **Step 1: เขียน `frontend/src/nav.js`**
 
 ```js
 const ALL = ['admin', 'employee', 'mechanic']
@@ -1980,9 +1050,11 @@ export function menuForRole(role) {
 }
 ```
 
-หมายเหตุ ใน `screens.md` โปรโมชั่นกับผู้ใช้ถูกยุบเข้าหน้าตั้งค่าเพื่อให้นับได้ 18 หน้า ที่นี่แยกเป็นเมนูของตัวเองเพราะเมนูคือทางเข้า ไม่ใช่หน่วยนับหน้าจอ ส่วนที่นับไม่ครบ 18 คือรายการใบงานกับรายละเอียดใบงานที่ใช้เมนูเดียวกัน
+หมายเหตุ ใน `screens.md` โปรโมชั่นกับผู้ใช้ถูกยุบเข้าหน้าตั้งค่าเพื่อให้นับได้ 18 หน้า ที่นี่แยกเป็นเมนู
+ของตัวเองเพราะเมนูคือทางเข้า ไม่ใช่หน่วยนับหน้าจอ ส่วนที่หายไปคือหน้าล็อกอิน (ไม่ใช่เมนู) และ
+หน้ารายละเอียดใบงาน (เข้าจากรายการใบงาน) จำนวนจึงเท่ากันพอดี
 
-- [ ] **Step 4: เขียน `frontend/src/auth/ProtectedRoute.jsx`**
+- [ ] **Step 2: เขียน `frontend/src/auth/ProtectedRoute.jsx`**
 
 ```jsx
 import { Navigate } from 'react-router-dom'
@@ -2008,7 +1080,10 @@ export default function ProtectedRoute({ children, roles }) {
 }
 ```
 
-- [ ] **Step 5: เขียน `frontend/src/components/AppShell.jsx`**
+ลำดับการตรวจสำคัญ ต้องเช็ค `loading` ก่อนเสมอ ไม่งั้นตอนเปิดเว็บครั้งแรกที่ยังถาม `/me` ไม่เสร็จ
+`user` จะยังเป็น `null` แล้วผู้ใช้ที่ล็อกอินอยู่จะถูกเด้งออกไปหน้าล็อกอินทุกครั้งที่รีเฟรช
+
+- [ ] **Step 3: เขียน `frontend/src/components/AppShell.jsx`**
 
 ```jsx
 import { NavLink } from 'react-router-dom'
@@ -2055,7 +1130,7 @@ export default function AppShell({ children }) {
 }
 ```
 
-- [ ] **Step 6: เขียน `frontend/src/pages/DashboardPage.jsx`**
+- [ ] **Step 4: เขียน `frontend/src/pages/DashboardPage.jsx`**
 
 ```jsx
 import { useAuth } from '../auth/AuthContext'
@@ -2075,7 +1150,7 @@ export default function DashboardPage() {
 }
 ```
 
-- [ ] **Step 7: เขียนทับ `frontend/src/App.jsx`**
+- [ ] **Step 5: เขียนทับ `frontend/src/App.jsx`**
 
 ```jsx
 import { Navigate, Route, Routes } from 'react-router-dom'
@@ -2107,7 +1182,7 @@ export default function App() {
 
 เส้นทางของอีก 17 หน้าจะทยอยเพิ่มในเฟสถัดไป ตอนนี้ทุก path ที่ยังไม่มีจะเด้งกลับแดชบอร์ด
 
-- [ ] **Step 8: ต่อท้าย `frontend/src/styles.css`**
+- [ ] **Step 6: ต่อท้าย `frontend/src/styles.css`**
 
 ```css
 .shell {
@@ -2179,12 +1254,26 @@ main {
 }
 ```
 
-- [ ] **Step 9: รันเทสต์ให้ผ่าน**
+- [ ] **Step 7: ตรวจด้วยมือ — นี่คือรายการตรวจที่สำคัญที่สุดของทั้งเฟส**
 
-Run: `cd frontend && npm test`
-Expected: PASS 10 passed (login 2 + nav 5 + protected route 3)
+| # | ทำอะไร | ต้องได้อะไร |
+|---|---|---|
+| 1 | ยังไม่ล็อกอิน เข้า `http://localhost:5173/` | เด้งไปหน้า `/login` |
+| 2 | ล็อกอินเป็น `owner` (admin) | เข้าแดชบอร์ด เมนูซ้ายมี **18 รายการ** |
+| 3 | กด F5 รีเฟรช | ยังล็อกอินอยู่ ไม่เด้งออก |
+| 4 | กดออกจากระบบ | กลับหน้าล็อกอิน และ `token` ใน Local Storage หายไป |
+| 5 | ล็อกอินเป็น `staff` (employee) | เมนูเหลือ **13 รายการ** ไม่มีโปรโมชั่น รายงานการเงิน รายงานภาษี ผู้ใช้ ตั้งค่า |
+| 6 | ล็อกอินเป็น `chang` (mechanic) | เมนูเหลือ **8 รายการ** ไม่มีออกบิล ขายหน้าร้าน รายการบิล ติดตามรอบบำรุงรักษา ใบสั่งซื้อ และทั้งห้ารายการของข้อ 5 |
+| 7 | ขณะเป็น `chang` พิมพ์ `/settings` บน address bar | เด้งกลับแดชบอร์ด |
+| 8 | ขณะเป็น `chang` พิมพ์ `/reports/financial` | เด้งกลับแดชบอร์ด |
 
-- [ ] **Step 10: Commit**
+ข้อ 7 กับ 8 สำคัญเพราะพิสูจน์ว่าการซ่อนเมนูไม่ใช่การป้องกัน คนที่รู้ URL ยังพิมพ์เข้ามาเองได้
+ต้องมี `ProtectedRoute` กันอีกชั้น
+
+**และต้องเข้าใจให้ชัดว่า** การกันทั้งหมดนี้เป็นเรื่องของหน้าจอเท่านั้น ตัวที่กันจริงคือ `require_roles`
+ฝั่ง backend เพราะใครก็แก้โค้ด JavaScript ในเบราว์เซอร์ตัวเองได้
+
+- [ ] **Step 8: Commit**
 
 ```bash
 git add frontend/
@@ -2193,108 +1282,24 @@ git commit -m "feat: add role-aware navigation, protected routes and app shell"
 
 ---
 
-## Task 10: ยืนยันทั้งระบบและเขียน README
+## Task 10: ตรวจทั้งระบบและเขียน README
 
 **Files:**
 - Create: `README.md`
-- Modify: `frontend/src/api/client.js`
-- Create: `frontend/tests/client.test.js`
 
-**Interfaces:**
-- Consumes: ทุกอย่างจาก Task 1-9
-- Produces: เอกสารวิธีรันโปรเจกต์ และ interceptor ที่เตะผู้ใช้ออกเมื่อโทเคนหมดอายุ
+- [ ] **Step 1: ตรวจเส้นทางเต็มอีกรอบจากศูนย์**
 
-- [ ] **Step 1: เขียนเทสต์ที่ยังไม่ผ่าน**
+ปิดทั้งสองเซิร์ฟเวอร์ ล้าง Local Storage ในเบราว์เซอร์ แล้วเริ่มใหม่ตั้งแต่ต้น ไล่รายการตรวจของ
+Task 9 ทั้งแปดข้ออีกครั้ง เพื่อยืนยันว่าไม่มีอะไรพึ่งสถานะค้างจากการทดสอบก่อนหน้า
 
-สร้าง `frontend/tests/client.test.js`
-
-```js
-import { beforeEach, describe, expect, it } from 'vitest'
-
-import client from '../src/api/client'
-
-describe('axios client', () => {
-  beforeEach(() => {
-    localStorage.clear()
-  })
-
-  it('แนบ Authorization header เมื่อมี token', () => {
-    localStorage.setItem('token', 'token-123')
-    const handler = client.interceptors.request.handlers[0].fulfilled
-    const config = handler({ headers: {} })
-
-    expect(config.headers.Authorization).toBe('Bearer token-123')
-  })
-
-  it('ไม่แนบ header เมื่อไม่มี token', () => {
-    const handler = client.interceptors.request.handlers[0].fulfilled
-    const config = handler({ headers: {} })
-
-    expect(config.headers.Authorization).toBeUndefined()
-  })
-
-  it('ลบ token ทิ้งเมื่อเซิร์ฟเวอร์ตอบ 401', async () => {
-    localStorage.setItem('token', 'token-123')
-    const handler = client.interceptors.response.handlers[0].rejected
-
-    await expect(handler({ response: { status: 401 } })).rejects.toBeTruthy()
-    expect(localStorage.getItem('token')).toBeNull()
-  })
-})
-```
-
-- [ ] **Step 2: รันเทสต์ให้เห็นว่าไม่ผ่าน**
-
-Run: `cd frontend && npm test`
-Expected: FAIL ที่เทสต์ตัวที่สาม เพราะยังไม่มี response interceptor
-
-- [ ] **Step 3: เติม response interceptor ใน `frontend/src/api/client.js`**
-
-เพิ่มก่อนบรรทัด `export default client`
-
-```js
-client.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token')
-    }
-    return Promise.reject(error)
-  },
-)
-```
-
-ลบแค่ token ไม่ต้อง redirect ที่นี่ เพราะ `ProtectedRoute` จะพาไปหน้าล็อกอินเองในการ render รอบถัดไป การสั่ง `window.location` ตรงนี้จะทำให้เทสต์พังและทำให้ผู้ใช้เสียข้อมูลในฟอร์มที่ยังไม่ได้บันทึก
-
-- [ ] **Step 4: รันเทสต์ทั้งหมดสองฝั่ง**
+- [ ] **Step 2: ตรวจว่าไฟล์ลับไม่ขึ้น git**
 
 ```bash
-cd backend && python -m pytest tests/ -v
-cd ../frontend && npm test
+git status --short
+git ls-files | grep -E "\.env$" && echo "อันตราย มี .env ถูก track" || echo "ปลอดภัย .env ไม่ถูก track"
 ```
 
-Expected: backend 28 passed, frontend 13 passed
-
-- [ ] **Step 5: ทดสอบด้วยมือทั้งเส้นทาง**
-
-เปิดสองหน้าต่าง
-
-```bash
-cd backend && uvicorn app.main:app --reload
-cd frontend && npm run dev
-```
-
-เข้า http://localhost:5173 แล้วตรวจทีละข้อ
-
-1. ยังไม่ล็อกอิน เข้า `/` แล้วเด้งไป `/login`
-2. ใส่รหัสผิด เห็นข้อความ `ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง`
-3. ล็อกอินด้วย `owner` / `owner1234` เข้าแดชบอร์ดได้ เมนูซ้ายมี 18 รายการ
-4. รีเฟรชหน้า ยังล็อกอินอยู่
-5. กดออกจากระบบ กลับไปหน้าล็อกอิน
-6. สร้างผู้ใช้ช่างผ่าน Swagger ที่ http://localhost:8000/docs แล้วล็อกอินด้วยบัญชีช่าง เมนูซ้ายต้องเหลือ 8 รายการ ไม่มีออกบิล ขายหน้าร้าน รายการบิล โปรโมชั่น รายงาน ผู้ใช้ ตั้งค่า และติดตามรอบบำรุงรักษา
-7. ล็อกอินเป็นช่างแล้วพิมพ์ `/settings` บน address bar ต้องเด้งกลับแดชบอร์ด
-
-- [ ] **Step 6: เขียน `README.md`**
+- [ ] **Step 3: เขียน `README.md`**
 
 ````markdown
 # ระบบจัดการอู่ซ่อมรถ
@@ -2306,6 +1311,7 @@ cd frontend && npm run dev
 - `new_scenario_summary.md` — ข้อกำหนดและข้อตัดสินใจทั้งหมด
 - `screens.md` — หน้าจอ 18 หน้าและสิทธิ์การเข้าถึง
 - `data_model.md` — โครงสร้างฐานข้อมูล
+- `docs/explain/` — คำอธิบายโค้ดรายส่วน
 - `docs/superpowers/plans/` — แผน implementation รายเฟส
 
 ## เทคโนโลยี
@@ -2328,7 +1334,7 @@ cd backend
 python -m venv .venv
 source .venv/Scripts/activate
 pip install -r requirements.txt
-cp .env.example .env
+cp .env.example .env      # แล้วเติม JWT_SECRET
 alembic upgrade head
 python -m app.seed --username owner --password owner1234 --full-name "เจ้าของอู่"
 uvicorn app.main:app --reload
@@ -2345,30 +1351,28 @@ cp .env.example .env
 npm run dev
 ```
 
-## รันเทสต์
+## วิธีตรวจงาน
 
-```bash
-cd backend && python -m pytest tests/ -v
-cd frontend && npm test
-```
+เฟส 1-2 ตรวจด้วยมือผ่าน Swagger และหน้าเว็บ รายการตรวจอยู่ในแผนของแต่ละเฟส
+เฟส 3-5 จะมีเทสต์อัตโนมัติเฉพาะการตัดสต็อก FIFO การปัดเศษ VAT และการจองเลขที่เอกสาร
+ซึ่งเป็นสามเรื่องที่ตรวจด้วยตาไม่ได้
 ````
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add README.md frontend/
-git commit -m "docs: add readme and handle expired tokens in api client"
+git add README.md
+git commit -m "docs: add readme"
 ```
 
 ---
 
 ## เสร็จเฟส 1 แล้วได้อะไร
 
-- ล็อกอินได้จริงทั้งสามบทบาท โทเคนหมดอายุแล้วถูกเตะออกเอง
+- ล็อกอินได้จริงทั้งสามบทบาท โทเคนหมดอายุหรือบัญชีถูกปิดแล้วถูกเตะออกทันที
 - เมนูและเส้นทางกรองตามบทบาทแล้ว ช่างพิมพ์ URL ตรงเข้าหน้าต้องห้ามไม่ได้
-- ฐานข้อมูลมี migration เป็นลำดับ ย้อนกลับได้ และมีฐานข้อมูลเทสต์แยก
-- เทสต์ 41 ตัวรันผ่าน เป็นฐานให้เฟสถัดไปเพิ่มต่อโดยไม่ต้องรื้อ
-- `require_roles` และ fixture `client` พร้อมให้ทุก endpoint ในเฟส 2-7 ใช้ซ้ำทันที
+- ฐานข้อมูลมี migration เป็นลำดับ ย้อนกลับได้ และมีฐานข้อมูลเทสต์แยกไว้ให้เฟสหลัง
+- `require_roles` พร้อมให้ทุก endpoint ในเฟส 2-7 ใช้ซ้ำทันที
 
 ## สิ่งที่ยังไม่ทำในเฟสนี้ โดยตั้งใจ
 

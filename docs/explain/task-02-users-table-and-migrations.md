@@ -161,7 +161,11 @@ Check constraints:
 
 ---
 
-## 4. `tests/conftest.py` โครงเทสต์ที่ทั้งโปรเจกต์ใช้
+## 4. `tests/conftest.py` โครงเทสต์ที่เตรียมไว้ให้เฟส 3-5
+
+**ไฟล์นี้ยังไม่ได้ถูกใช้** เฟส 1-2 ตรวจงานด้วยมือ ไม่มีไฟล์เทสต์สักไฟล์ แต่เก็บโครงนี้ไว้เพราะเฟส 3-5
+จะกลับมาเขียนเทสต์กับสามเรื่องที่ตาไม่เห็น คือการตัดสต็อกแบบ FIFO การปัดเศษ VAT
+และการจองเลขที่เอกสาร ทั้งสามเรื่องต้องการฐานข้อมูลจริงที่สะอาดทุกครั้ง ซึ่งคือสิ่งที่ไฟล์นี้เตรียมให้
 
 `conftest.py` เป็นชื่อพิเศษของ pytest ทุกอย่างที่ประกาศในไฟล์นี้ ไฟล์เทสต์ในโฟลเดอร์เดียวกันเรียกใช้ได้
 โดยไม่ต้อง import
@@ -276,19 +280,61 @@ fixture `client` จริง ๆ ซึ่งเริ่มเกิดขึ�
 
 ---
 
-## 5. เทสต์สามตัวและสิ่งที่แต่ละตัวพิสูจน์
+## 5. ตรวจงานของ task นี้ด้วยมือ
 
-| เทสต์ | พิสูจน์อะไร |
-|---|---|
-| `test_can_insert_and_read_user` | บันทึกและอ่านกลับได้ ค่า default ของ `is_active` และ `created_at` ทำงานจริง |
-| `test_username_must_be_unique` | ฐานข้อมูลปฏิเสธชื่อผู้ใช้ซ้ำ ด้วย `IntegrityError` |
-| `test_role_must_be_one_of_three` | `CheckConstraint` ทำงานจริง ใส่ `role='owner'` แล้วฐานข้อมูลไม่ยอม |
+เฟส 1 ไม่เขียนเทสต์อัตโนมัติ ตรวจสามข้อนี้แทน
 
-สองตัวหลังใช้ `pytest.raises(IntegrityError)` ซึ่งแปลว่า "เทสต์นี้ผ่านก็ต่อเมื่อคำสั่งข้างในพัง"
-เป็นวิธีทดสอบว่ากฎที่ตั้งไว้บังคับได้จริง ไม่ใช่แค่เขียนไว้เฉย ๆ
+**ข้อ 1 — ตารางถูกสร้างครบตามที่ออกแบบไว้**
 
-`db_session.flush()` คือการส่งคำสั่ง SQL ลงฐานข้อมูลโดยยังไม่ commit ใช้ตรงนี้เพราะต้องการให้
-ฐานข้อมูลตรวจ constraint เดี๋ยวนั้นเลยจะได้เห็นว่ามัน error จริง
+```bash
+psql -U garage -h localhost -d garage -c "\d users"
+```
+
+ต้องเห็นครบสี่อย่าง คอลัมน์ `id` เป็น `bigint`, `created_at` เป็น `timestamp with time zone`
+ที่มี default เป็น `now()`, บรรทัด `"users_username_key" UNIQUE CONSTRAINT` และบรรทัด
+`"users_role_check" CHECK`
+
+**ข้อ 2 — unique constraint บังคับได้จริง**
+
+```sql
+insert into users (username, password_hash, full_name, role)
+values ('somchai', 'x', 'สมชาย', 'admin');
+
+insert into users (username, password_hash, full_name, role)
+values ('somchai', 'y', 'สมชายอีกคน', 'employee');
+```
+
+คำสั่งที่สองต้องขึ้น `ERROR: duplicate key value violates unique constraint "users_username_key"`
+
+**ข้อ 3 — check constraint บังคับได้จริง**
+
+```sql
+insert into users (username, password_hash, full_name, role)
+values ('boss', 'x', 'เจ้านาย', 'owner');
+```
+
+ต้องขึ้น `ERROR: new row for relation "users" violates check constraint "users_role_check"`
+
+ทดสอบผ่าน SQL ตรง ๆ แบบนี้มีค่ากว่าทดสอบผ่าน API เพราะมันพิสูจน์ว่ากฎอยู่ที่**ฐานข้อมูล**
+ไม่ใช่แค่ในโค้ด Python ถ้าไปทดสอบผ่าน API จะแยกไม่ออกว่าที่ปฏิเสธมาเป็นเพราะ pydantic
+หรือเพราะ constraint
+
+ล้างข้อมูลทดสอบทิ้งเมื่อเสร็จ
+
+```sql
+delete from users where username in ('somchai', 'boss');
+```
+
+**ข้อ 4 — migration ย้อนกลับได้**
+
+```bash
+cd backend
+./.venv/Scripts/python.exe -m alembic downgrade base   # ตาราง users หายไป
+./.venv/Scripts/python.exe -m alembic upgrade head     # กลับมาเหมือนเดิม
+```
+
+ข้อนี้พิสูจน์ว่า `downgrade()` ในไฟล์ migration เขียนถูก ซึ่งเป็นทางหนีทีไล่เวลาแก้โครงสร้าง
+ผิดในเฟสหลัง
 
 ---
 
@@ -299,7 +345,8 @@ fixture `client` จริง ๆ ซึ่งเริ่มเกิดขึ�
 | migration คืออะไร ทำไมไม่พิมพ์ `create table` เอง | migration เก็บการเปลี่ยนโครงสร้างเป็นไฟล์เรียงลำดับ ย้ายเครื่องหรืออัปเดตทีหลังก็รันตามลำดับได้ และมีตาราง `alembic_version` จดว่าฐานนี้อยู่ขั้นไหนแล้ว |
 | ทำไมตรวจ role ทั้งในโค้ดและในฐานข้อมูล | ฐานข้อมูลคือด่านสุดท้ายที่ทุกทางเข้าต้องผ่าน ถ้ามีคน INSERT ตรงผ่าน SQL โค้ด Python กันไม่ได้ |
 | `server_default` ต่างจาก `default` ยังไง | `default` Python เป็นคนใส่ `server_default` ฐานข้อมูลเป็นคนใส่ อย่างหลังทำงานแม้ INSERT ตรงผ่าน SQL |
-| ทำไมเทสต์ไม่ทิ้งข้อมูลค้าง | ทุกเทสต์ทำงานในทรานแซกชันที่ถูก rollback ทิ้งเมื่อจบ ข้อมูลจึงไม่เคยถูกบันทึกจริง |
-| `commit()` ใน endpoint จะทำให้ rollback ไม่ทำงานไหม | ไม่ เพราะตั้ง `join_transaction_mode="create_savepoint"` ทำให้ `commit()` ปิดแค่ savepoint ข้างใน ส่วนทรานแซกชันชั้นนอกของเทสต์ยังเปิดอยู่ |
+| ตรวจได้ยังไงว่า constraint บังคับจริง ไม่ใช่แค่โค้ดตรวจ | ยิง `insert` เข้าไปตรง ๆ ผ่าน psql โดยไม่ผ่าน API ถ้าฐานข้อมูลปฏิเสธแปลว่ากฎอยู่ที่ฐานข้อมูลจริง |
+| ทำไมเก็บ `conftest.py` ไว้ทั้งที่ยังไม่มีเทสต์ | เฟส 3-5 จะเขียนเทสต์กับ FIFO การปัดเศษ VAT และการจองเลขที่เอกสาร ซึ่งต้องการฐานข้อมูลจริงที่สะอาดทุกครั้ง โครงนี้เตรียมส่วนนั้นไว้แล้ว |
+| ตอนเขียนเทสต์แล้ว `commit()` ใน endpoint จะทำให้ข้อมูลค้างไหม | ไม่ เพราะตั้ง `join_transaction_mode="create_savepoint"` ทำให้ `commit()` ปิดแค่ savepoint ข้างใน ส่วนทรานแซกชันชั้นนอกของเทสต์ยังเปิดอยู่และถูก rollback เมื่อจบ |
 | ถ้าเพิ่มตารางใหม่แล้วลืมทำอะไร | ลืม `import` โมเดลใหม่ใน `alembic/env.py` ผลคือ Alembic มองไม่เห็นตารางใหม่ และอาจสร้าง migration ที่ลบตารางเก่าทิ้ง |
 | ทำไม `id` เป็น `bigint` ไม่ใช่ `int` | `data_model.md` กำหนดว่าทุกตารางใช้ `bigserial` และถ้าตารางหนึ่งเป็น int4 แต่ตารางที่อ้างถึงเป็น int8 ชนิดจะไม่ตรงกัน ทำให้ index ทำงานได้ไม่เต็มที่ |
