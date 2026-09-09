@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, String, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -15,7 +15,7 @@ class User(Base):
         ),
     )
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(primary_key=True)
     username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(120), nullable=False)

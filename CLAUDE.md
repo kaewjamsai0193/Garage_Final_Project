@@ -51,7 +51,7 @@ psql อยู่ที่ `C:\Program Files\PostgreSQL\18\bin\psql.exe` ไม�
 
 - เงินใช้ `Decimal` เท่านั้น ห้าม `float`
 - เวลาใช้ `datetime.now(timezone.utc)` ห้าม `datetime.now()` เปล่า
-- `id` ทุกตารางเป็น `BigInteger`
+- `id` ทุกตารางเป็น `Integer` เขียน `mapped_column(primary_key=True)` เฉย ๆ ไม่ต้องระบุชนิด
 - ราคาที่แสดงบนหน้าจอและที่คุยกับลูกค้าเป็นราคารวม VAT แล้ว ถอด VAT ตอนออกบิลเท่านั้น
 - ห้ามใช้ `SEQUENCE` ของ PostgreSQL ออกเลขที่เอกสาร ต้อง lock แถวใน `document_sequences`
 - ค่าตั้งทุกตัวใน `config.py` ไม่มีค่าเริ่มต้น ค่าจริงอยู่ที่ `.env` ที่เดียว

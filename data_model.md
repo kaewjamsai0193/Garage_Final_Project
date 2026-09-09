@@ -2,7 +2,7 @@
 
 PostgreSQL — 22 ตาราง อ้างอิง `new_scenario_summary.md` และ `screens.md`
 
-เงินทุกคอลัมน์เป็น `numeric(12,2)` วันเวลาเป็น `timestamptz` `id` ของทุกตารางเป็น `bigserial`
+เงินทุกคอลัมน์เป็น `numeric(12,2)` วันเวลาเป็น `timestamptz` `id` ของทุกตารางเป็น `serial`
 
 ---
 
@@ -44,7 +44,7 @@ erDiagram
 ```mermaid
 erDiagram
     users {
-        bigint id PK
+        int id PK
         varchar username UK
         varchar password_hash
         varchar full_name
@@ -65,7 +65,7 @@ erDiagram
     customers ||--o{ vehicles : "เป็นเจ้าของ"
 
     customers {
-        bigint id PK
+        int id PK
         varchar phone UK "ใช้ค้นเป็นอันดับแรก"
         varchar name
         varchar address
@@ -74,8 +74,8 @@ erDiagram
     }
 
     vehicles {
-        bigint id PK
-        bigint customer_id FK
+        int id PK
+        int customer_id FK
         varchar plate UK
         varchar vehicle_type "car / motorcycle"
         varchar brand
@@ -98,7 +98,7 @@ erDiagram
     goods_receipts ||--o{ stock_lots : "หนึ่งใบรับ หลาย Lot"
 
     products {
-        bigint id PK
+        int id PK
         varchar code UK
         varchar name
         varchar unit
@@ -110,9 +110,9 @@ erDiagram
     }
 
     stock_lots {
-        bigint id PK
-        bigint product_id FK
-        bigint receipt_id FK
+        int id PK
+        int product_id FK
+        int receipt_id FK
         timestamptz received_at "ใช้เรียงคิว FIFO"
         numeric unit_cost "ก่อน VAT"
         numeric vat_amount "ต่อชิ้น 0 เมื่อไม่มีใบกำกับ"
@@ -121,15 +121,15 @@ erDiagram
     }
 
     stock_movements {
-        bigint id PK
-        bigint product_id FK
-        bigint lot_id FK
+        int id PK
+        int product_id FK
+        int lot_id FK
         int qty "บวกคือเข้า ลบคือออก"
         varchar movement_type "receive / issue / return / adjust"
         varchar ref_type "job_order / invoice / goods_receipt / adjustment"
-        bigint ref_id
+        int ref_id
         text reason "บังคับเมื่อ adjust"
-        bigint created_by FK
+        int created_by FK
         timestamptz created_at
     }
 ```
@@ -156,39 +156,39 @@ erDiagram
     products ||--o{ purchase_order_items : "สั่ง"
 
     suppliers {
-        bigint id PK
+        int id PK
         varchar name
         varchar phone
         varchar tax_id
     }
 
     purchase_orders {
-        bigint id PK
+        int id PK
         varchar po_number UK
-        bigint supplier_id FK
+        int supplier_id FK
         varchar status "open / closed / cancelled"
-        bigint created_by FK
+        int created_by FK
         timestamptz created_at
     }
 
     purchase_order_items {
-        bigint id PK
-        bigint po_id FK
-        bigint product_id FK
+        int id PK
+        int po_id FK
+        int product_id FK
         int qty_ordered
         int qty_received
         numeric unit_price "ราคาที่ตกลงกับร้าน ก่อน VAT"
     }
 
     goods_receipts {
-        bigint id PK
+        int id PK
         varchar receipt_number UK
-        bigint supplier_id FK
-        bigint po_id FK "null เมื่อซื้อด่วน"
+        int supplier_id FK
+        int po_id FK "null เมื่อซื้อด่วน"
         varchar receipt_type "po / urgent"
         varchar supplier_invoice_no "ไม่บังคับ"
         date supplier_invoice_date "ไม่บังคับ"
-        bigint created_by FK
+        int created_by FK
         timestamptz created_at
     }
 ```
@@ -213,52 +213,52 @@ erDiagram
     products ||--o{ quotation_items : "อะไหล่ที่เสนอ"
 
     job_orders {
-        bigint id PK
+        int id PK
         varchar job_number UK
-        bigint vehicle_id FK
-        bigint customer_id FK "สำเนาเจ้าของ ณ วันรับรถ"
+        int vehicle_id FK
+        int customer_id FK "สำเนาเจ้าของ ณ วันรับรถ"
         int mileage
         text symptom
         varchar status "pending / in_progress / done / closed / cancelled"
         boolean waiting_parts "ป้ายกำกับ ระบบเปิดปิดเอง"
         text cancel_reason
-        bigint opened_by FK
+        int opened_by FK
         timestamptz opened_at
         timestamptz closed_at
     }
 
     job_order_mechanics {
-        bigint job_id PK
-        bigint user_id PK
+        int job_id PK
+        int user_id PK
         boolean is_primary "ช่างหลักได้คนเดียว"
     }
 
     job_status_history {
-        bigint id PK
-        bigint job_id FK
+        int id PK
+        int job_id FK
         varchar from_status
         varchar to_status
-        bigint changed_by FK
+        int changed_by FK
         timestamptz changed_at
     }
 
     quotations {
-        bigint id PK
-        bigint job_id FK
+        int id PK
+        int job_id FK
         int version
         varchar status "draft / approved / superseded"
         numeric labor_total "รวม VAT"
         numeric parts_total "รวม VAT"
         numeric grand_total "รวม VAT"
-        bigint created_by FK
-        bigint approved_by FK "ห้ามเป็น mechanic"
+        int created_by FK
+        int approved_by FK "ห้ามเป็น mechanic"
         timestamptz approved_at
     }
 
     quotation_items {
-        bigint id PK
-        bigint quotation_id FK
-        bigint product_id FK
+        int id PK
+        int quotation_id FK
+        int product_id FK
         int qty
         numeric unit_price "รวม VAT"
         numeric line_total
@@ -285,18 +285,18 @@ erDiagram
     products ||--o{ invoice_items : "อะไหล่ที่ขาย"
 
     invoices {
-        bigint id PK
+        int id PK
         varchar doc_type "tax_invoice / warranty_claim"
         int doc_year
         int doc_number
         varchar invoice_type "repair / counter_sale"
-        bigint job_id FK "null เมื่อขายหน้าร้าน"
-        bigint customer_id FK "null เมื่อลูกค้าขาจร"
+        int job_id FK "null เมื่อขายหน้าร้าน"
+        int customer_id FK "null เมื่อลูกค้าขาจร"
         varchar buyer_name "สำเนา ไม่ใช่ FK"
         varchar buyer_address "สำเนา"
         varchar buyer_tax_id "สำเนา"
         varchar tax_invoice_form "abbreviated / full"
-        bigint promotion_id FK
+        int promotion_id FK
         numeric discount_amount "รวม VAT เหมือนราคาที่คุยกับลูกค้า"
         numeric subtotal_ex_vat
         numeric vat_amount
@@ -304,20 +304,20 @@ erDiagram
         numeric gross_profit "คำนวณตอนออกบิล"
         varchar status "issued / cancelled"
         text cancel_reason
-        bigint issued_by FK "ห้ามเป็น mechanic"
+        int issued_by FK "ห้ามเป็น mechanic"
         timestamptz issued_at
         numeric amount_received
         numeric withholding_amount "ลูกค้านิติบุคคลหักไว้"
         varchar payment_method
-        bigint received_by FK "ห้ามเป็น mechanic"
+        int received_by FK "ห้ามเป็น mechanic"
         timestamptz received_at "null คือยังไม่ได้รับเงิน"
     }
 
     invoice_items {
-        bigint id PK
-        bigint invoice_id FK
+        int id PK
+        int invoice_id FK
         varchar item_type "part / labor"
-        bigint product_id FK "null เมื่อเป็นค่าแรง"
+        int product_id FK "null เมื่อเป็นค่าแรง"
         varchar description
         int qty
         numeric unit_price "รวม VAT"
@@ -326,9 +326,9 @@ erDiagram
     }
 
     invoice_item_lots {
-        bigint id PK
-        bigint invoice_item_id FK
-        bigint lot_id FK
+        int id PK
+        int invoice_item_id FK
+        int lot_id FK
         int qty
         numeric unit_cost "ต้นทุนจริงของ Lot นั้น"
     }
@@ -365,7 +365,7 @@ erDiagram
     users ||--o{ maintenance_reminders : "คนที่โทรล่าสุด"
 
     promotions {
-        bigint id PK
+        int id PK
         varchar name
         varchar scope "all / parts / labor"
         varchar discount_type "percent / amount"
@@ -376,15 +376,15 @@ erDiagram
     }
 
     maintenance_reminders {
-        bigint id PK
-        bigint vehicle_id FK
-        bigint product_id FK
+        int id PK
+        int vehicle_id FK
+        int product_id FK
         date due_date
-        bigint source_invoice_id FK
+        int source_invoice_id FK
         varchar status "pending / closed"
         varchar last_call_result "appointment / refused / no_answer"
         timestamptz last_called_at "null คือยังไม่เคยโทร"
-        bigint last_called_by FK
+        int last_called_by FK
         text note
         timestamptz created_at
     }
@@ -392,7 +392,7 @@ erDiagram
     settings {
         varchar key PK
         text value
-        bigint updated_by FK
+        int updated_by FK
         timestamptz updated_at
     }
 ```
