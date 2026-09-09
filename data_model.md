@@ -2,7 +2,7 @@
 
 PostgreSQL อ้างอิงข้อตัดสินใจใน `new_scenario_summary.md` และหน้าจอใน `screens.md`
 
-**23 ตาราง** เงินทุกคอลัมน์เป็น `numeric(12,2)` วันเวลาเป็น `timestamptz` `id` ของทุกตารางเป็น `bigserial`
+**22 ตาราง** เงินทุกคอลัมน์เป็น `numeric(12,2)` วันเวลาเป็น `timestamptz` `id` ของทุกตารางเป็น `bigserial`
 
 สถานะการสร้างจริง — ตาราง `users` สร้างแล้ว (migration `0001`) ที่เหลือทยอยสร้างตามเฟสในแผน
 
@@ -41,15 +41,16 @@ erDiagram
 - **`job_orders ||--o| invoices`** ใบงานหนึ่งใบออกบิลได้ไม่เกินหนึ่งใบ และบิลขายหน้าร้านไม่มีใบงานเลย `job_id` จึงเป็น null ได้
 - **`invoice_items ||--o{ invoice_item_lots`** หนึ่งรายการขายอาจกินหลาย Lot ตารางกลางนี้คือตัวที่ทำให้รู้ต้นทุนจริงและคืนของกลับ Lot เดิมได้
 
-### สามตารางที่ถูกยุบทิ้งโดยตั้งใจ
+### สี่ตารางที่ถูกยุบทิ้งโดยตั้งใจ
 
-ออกแบบรอบแรกมี 26 ตาราง ยุบเหลือ 23 โดยไม่เสียความสามารถใด ๆ
+ออกแบบรอบแรกมี 26 ตาราง ยุบเหลือ 22
 
 | ยุบอะไร | เหตุผล |
 |---|---|
 | `goods_receipt_items` รวมเข้า `stock_lots` | ทุกแถวที่รับของสร้าง Lot หนึ่งแถวเสมอ เป็น 1:1 กันเป๊ะ ไม่มีทางเป็นอย่างอื่น |
 | `payments` รวมเข้า `invoices` | ระบบรับเงินครบทีเดียว ไม่มีการผ่อนเป็นงวด จึงเป็น 1:1 กับบิล และ `received_at` ที่เป็น null กลายเป็นเงื่อนไข "ยังไม่ได้รับเงิน" ที่ใช้ตรวจตอนยกเลิกบิลได้เลย |
 | `warranties` ลบทิ้ง | วันหมดประกันเก็บอยู่ที่ `invoice_items.warranty_expires_on` อยู่แล้ว การเก็บซ้ำสองที่คือช่องทางให้ข้อมูลไม่ตรงกัน |
+| `reminder_calls` รวมเข้า `maintenance_reminders` | เก็บสถานะการโทรล่าสุดพอสำหรับการทำงาน ประวัติทุกสายมีค่าก็ต่อเมื่อจะเอาไปประเมินพนักงาน ซึ่งอยู่นอกขอบเขตของระบบนี้ |
 
 **หลักที่ใช้ตัดสิน** ยุบเมื่อสองตารางเกิดและตายพร้อมกันเสมอ อย่ายุบเมื่อจำนวนแถวไม่เท่ากัน
 เพราะจะได้ตารางที่มีคอลัมน์ว่างเต็มไปหมด — ด้วยเหตุนี้ `invoice_items` กับ `invoice_item_lots`
@@ -409,8 +410,8 @@ erDiagram
 erDiagram
     vehicles ||--o{ maintenance_reminders : "ถึงกำหนดเช็คระยะ"
     products ||--o{ maintenance_reminders : "อะไหล่ที่ต้องเปลี่ยน"
-    maintenance_reminders ||--o{ reminder_calls : "บันทึกทุกครั้งที่โทร"
     invoices ||--o{ maintenance_reminders : "สร้างจากบิลนี้"
+    users ||--o{ maintenance_reminders : "คนที่โทรล่าสุด"
 
     promotions {
         bigint id PK
@@ -430,16 +431,11 @@ erDiagram
         date due_date
         bigint source_invoice_id FK
         varchar status "pending / closed"
-        timestamptz created_at
-    }
-
-    reminder_calls {
-        bigint id PK
-        bigint reminder_id FK
-        varchar result "appointment / refused / no_answer"
+        varchar last_call_result "appointment / refused / no_answer"
+        timestamptz last_called_at "null คือยังไม่เคยโทร"
+        bigint last_called_by FK
         text note
-        bigint called_by FK
-        timestamptz called_at
+        timestamptz created_at
     }
 
     settings {
@@ -478,7 +474,14 @@ select ii.description, ii.warranty_expires_on
 หนึ่งคู่ (รถ, สินค้า) มีรายการเตือนที่ยัง `pending` ได้รายการเดียว ถ้าลูกค้ากลับมาเปลี่ยนตัวเดิม
 ก่อนกำหนด รายการเดิมถูกปิดแล้วสร้างรอบใหม่แทน ไม่เตือนซ้อน
 
-`reminder_calls` เก็บทุกครั้งที่โทร ไม่ทับของเดิม เพราะ KPI นับจำนวนครั้งที่โทรด้วย
+**สถานะการโทรเก็บไว้บนรายการเตือนเลย ไม่มีตาราง `reminder_calls` แยก** เก็บเฉพาะครั้งล่าสุด
+ทับของเดิมไปเรื่อย ๆ
+
+เท่านี้พอสำหรับสิ่งที่หน้าจอต้องใช้จริง คือรู้ว่ารายไหนโทรไปแล้ววันนี้จะได้ไม่โทรซ้ำ และรายไหน
+ปฏิเสธไปแล้วจะได้เลิกตาม ส่วนประวัติว่าโทรกี่ครั้งกว่าจะติดและใครเป็นคนโทรครั้งไหน มีค่าก็ต่อเมื่อ
+จะเอาไปประเมินผลงานพนักงาน ซึ่งอยู่นอกขอบเขตของระบบนี้
+
+`last_called_at` ที่เป็น null แปลว่ายังไม่เคยโทร ใช้เป็นเงื่อนไขกรองรายชื่อบนหน้าจอได้ตรง ๆ
 
 `settings` เก็บข้อมูลอู่สำหรับหัวบิล จำนวนวันรับประกันค่าแรงเริ่มต้น และจำนวนวันที่นับว่าของค้างคลัง
 (ค่าเริ่มต้น 90)
