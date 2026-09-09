@@ -6,6 +6,7 @@
 | ไฟล์ | เนื้อหา |
 |---|---|
 | `task-01-scaffold-and-config.md` | โครงโปรเจกต์ การอ่านค่าตั้ง การเชื่อมฐานข้อมูล และเทสต์ตัวแรก |
+| `task-02-users-table-and-migrations.md` | ตาราง users, Alembic migration, constraint ในฐานข้อมูล และโครงเทสต์ |
 
 เอกสารอ้างอิงอื่น
 
