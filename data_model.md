@@ -185,7 +185,6 @@ erDiagram
 
     purchase_orders {
         int id PK
-        varchar po_number UK
         int supplier_id FK
         varchar status "open / closed / cancelled"
         text close_reason "บังคับเมื่อปิดก่อนครบหรือยกเลิก"
@@ -205,7 +204,6 @@ erDiagram
 
     goods_receipts {
         int id PK
-        varchar receipt_number UK
         int supplier_id FK "null ได้เมื่อซื้อร้านนอกแบบ urgent"
         int po_id FK "null คือซื้อด่วน"
         varchar supplier_invoice_no "null คือไม่มีใบกำกับ"
@@ -249,7 +247,6 @@ erDiagram
 
     job_orders {
         int id PK
-        varchar job_number UK
         int vehicle_id FK
         int customer_id FK
         varchar job_type "repair / warranty_claim"
@@ -354,12 +351,11 @@ erDiagram
         varchar tax_invoice_form "abbreviated / full; null เมื่อเคลม"
         numeric discount_amount "เงินบาททั้งบิล กรอกเอง; default 0"
         text discount_reason "บังคับเมื่อ discount_amount > 0"
-        numeric vat_rate "อัตราร้อยละ 7; เคลมเป็น 0"
+        numeric vat_rate "สำเนา settings.vat_rate; เคลมเป็น 0"
         numeric subtotal_ex_vat
         numeric vat_amount
         numeric grand_total
         numeric cost_total "ต้นทุนรวมจาก invoice_item_lots"
-        numeric gross_profit "generated: subtotal_ex_vat - cost_total"
         numeric labor_net_ex_vat "ค่าแรงหลังส่วนลดก่อน VAT สำหรับผลงานช่าง"
         varchar status "issued / cancelled"
         text cancel_reason
@@ -404,14 +400,14 @@ erDiagram
 - UNIQUE `(invoice_item_id, lot_id)` ทั้งงานซ่อมและหน้าร้าน จำนวนรวม lot rows ต้องเท่ากับ qty รายการบิล หน้าร้านตัด FIFO และเขียน issue ที่อ้าง invoice_item_lot_id ใน transaction ออกบิล ขายได้เมื่อมีของครบหลังจัดสรรคิวรอเท่านั้น
 - ข้อมูลผู้ซื้อ หัวบิล รายละเอียด หน่วย อัตรา VAT ยอดส่วนลดและเหตุผล ข้อมูลอู่ ต้นทุน และจำนวนวันประกันเป็นสำเนา พิมพ์ซ้ำไม่อ่านค่าปัจจุบันมาแทน tax_invoice แบบ full ต้องมีชื่อ ที่อยู่ เลขผู้เสียภาษีผู้ซื้อ; abbreviated ไม่บังคับ
 - ส่วนลดเป็นจำนวนเงินบาททั้งบิลเท่านั้น 0 <= discount_amount <= sum(invoice_items.line_total) เมื่อมากกว่า 0 ต้องมี discount_reason เป็นข้อความที่ไม่ว่าง เมื่อเป็น 0 เหตุผลเป็น null ผู้กรอกคือ issued_by เก็บในบิลและ audit ไม่ต้องอ้างตารางแคมเปญ
-- `doc_type = warranty_claim` ใช้ได้เฉพาะใบงาน job_type เดียวกันที่อนุมัติรายการเคลมแล้วและอ้างบิลต้นทางถูกต้อง unit_price/line_total ทุกแถว, discount_amount, subtotal_ex_vat, vat_amount, grand_total, vat_rate และ labor_net_ex_vat เป็น 0; discount_reason และ tax_invoice_form เป็น null; qty และ cost_total ยังคงค่าจริงและ gross_profit = -cost_total
+- `doc_type = warranty_claim` ใช้ได้เฉพาะใบงาน job_type เดียวกันที่อนุมัติรายการเคลมแล้วและอ้างบิลต้นทางถูกต้อง unit_price/line_total ทุกแถว, discount_amount, subtotal_ex_vat, vat_amount, grand_total, vat_rate และ labor_net_ex_vat เป็น 0; discount_reason และ tax_invoice_form เป็น null; qty และ cost_total ยังคงค่าจริง กำไรขั้นต้นจึงเป็น -cost_total
 - งาน job_type = repair และการขายหน้าร้านต้องใช้ doc_type = tax_invoice แม้กรอกส่วนลดเท่ายอดทั้งบิล และรวมในรายงานตามประเภทเอกสาร ไม่ใช้ยอดศูนย์ตัดสินว่าเป็นเคลม รูปแบบเอกสารเคลมและกติกาภาษีต้องได้รับการยืนยันจากผู้ทำบัญชีก่อนใช้งานจริง
 - บิลต้องมีอย่างน้อยหนึ่งรายการ บิลงานซ่อมมีแถวค่าแรงหนึ่งแถวเสมอแม้ labor_total = 0 (ใบงานที่ลดจนไม่เหลืออะไหล่จึงออกบิลยอดศูนย์และยืนยันส่งมอบเพื่อปิดได้) บิลหน้าร้านไม่มีแถวค่าแรง แถวค่าแรง `item_type = labor`, product_id เป็น null, qty = 1 และไม่มี lot rows อะไหล่ต้องมี product_id, qty > 0, unit_price >= 0; UNIQUE สินค้าต่อบิล รวมรายการสินค้าซ้ำก่อนบันทึก งานค่าแรงล้วนที่ไม่มี lot rows มี cost_total = 0
 - รับเงินครั้งเดียวเฉพาะบิล issued ที่ received_at เป็น null และ `amount_received + withholding_amount = grand_total` ทั้งสองยอดไม่ติดลบ payment_method เป็น cash หรือ transfer; ยอดศูนย์ต้องกดยืนยันโดย Admin/Employee ใช้ zero_total และทั้งสองยอดเป็น 0
 - ก่อนรับเงิน amount_received, withholding_amount, payment_method, received_by, received_at เป็น null ทั้งชุด หลังรับต้องครบทั้งชุด ห้ามแก้หรือล้างย้อนกลับ รุ่นนี้ไม่มีเงินทอนในยอดบันทึก amount_received เป็นยอดสุทธิที่นำมาชำระบิล
 - รับเงินหรือยืนยันยอดศูนย์แล้วปิดใบงาน คำนวณวันหมดประกันงานปกติ และสร้างรอบเตือนใน transaction เดียวกับการบันทึกผู้รับ กดซ้ำต้องไม่ทำซ้ำ หน้าร้านบันทึกการรับเงินได้แต่ไม่สร้างใบงาน ประกันงานซ่อม หรือรอบเตือน
 - ยกเลิกได้เฉพาะ issued ที่ received_at เป็น null ต้องมี cancel_reason, cancelled_by, cancelled_at งานซ่อมคงการเบิก/สต็อก/สถานะ done ไว้เพื่อออกบิลแทน หน้าร้านคืนตาม invoice_item_lots เมื่อยืนยันของจริงพร้อมใช้เท่านั้น แล้วจัดสรรให้คิวรอ
-- บิลและรายการที่ออกแล้วห้ามแก้ข้อมูลทางการเงินหรือลบ อนุญาตเฉพาะบันทึกรับเงินพร้อมวันหมดประกันครั้งเดียว หรือเปลี่ยนเป็น cancelled ยกเลิกแล้วยังเก็บ gross_profit และยอดเดิม รายงานกรองสถานะ ไม่ล้างตัวเลขเพื่อซ่อนประวัติ
+- บิลและรายการที่ออกแล้วห้ามแก้ข้อมูลทางการเงินหรือลบ อนุญาตเฉพาะบันทึกรับเงินพร้อมวันหมดประกันครั้งเดียว หรือเปลี่ยนเป็น cancelled ยกเลิกแล้วยังเก็บ cost_total และยอดเดิม รายงานกรองสถานะ ไม่ล้างตัวเลขเพื่อซ่อนประวัติ
 
 ---
 
@@ -446,6 +442,7 @@ erDiagram
         varchar warranty_claim_number_format
         int repair_warranty_days "check >= 0 เริ่มต้น 30"
         int dead_stock_days "check > 0 เริ่มต้น 90"
+        numeric vat_rate "check >= 0 เริ่มต้น 7"
         int updated_by FK
         timestamptz updated_at
     }
@@ -459,7 +456,7 @@ erDiagram
 - ปิดรายการค้างเดิมด้วย close_reason = replaced แล้วสร้างใหม่ใน transaction เดียว UNIQUE `(source_invoice_id, product_id)` กันสร้างซ้ำ บิลยังไม่รับเงินหรือยกเลิกไม่แตะรอบเดิม หน้าร้านไม่มีรอบเตือน
 - รายการหน้าเตือนคือ close_reason is null และ due_date <= วันนี้ตามเวลาไทย + 7 วัน รวมรายการเกินกำหนด เรียง due_date, id แสดงลูกค้าและเบอร์โทรของเจ้าของรถปัจจุบันพร้อมข้อมูลรถและอะไหล่
 - Admin/Employee จด note และปิดการติดตามด้วย close_reason = dismissed ได้ เก็บ closed_at และ closed_by; ระบบแทนรอบใช้ replaced และผู้รับเงินเป็น closed_by สถานะไม่เก็บซ้ำ CHECK ให้ close_reason, closed_at, closed_by เป็น null พร้อมกันหรือมีครบพร้อมกัน การปิดด้วยมือไม่ถือว่าเปลี่ยนอะไหล่แล้ว
-- `settings` เป็นตารางแถวเดียวที่แต่ละค่ามีคอลัมน์และชนิดของตัวเอง ไม่ใช่ key/value เพื่อให้ CHECK บังคับค่าได้ เก็บข้อมูลอู่สำหรับหัวบิล (คัดลอกไป seller_* ตอนออกบิล) รูปแบบเลขที่เอกสารของแต่ละ doc_type (ใช้สร้าง display_number) จำนวนวันประกัน และจำนวนวันที่นับว่าของค้างคลัง ไม่มีตารางแคมเปญ นัดหมาย หรือคิวโทรซ้ำ
+- `settings` เป็นตารางแถวเดียวที่แต่ละค่ามีคอลัมน์และชนิดของตัวเอง ไม่ใช่ key/value เพื่อให้ CHECK บังคับค่าได้ เก็บข้อมูลอู่สำหรับหัวบิล (คัดลอกไป seller_* ตอนออกบิล) รูปแบบเลขที่เอกสารของแต่ละ doc_type (ใช้สร้าง display_number) อัตรา VAT (คัดลอกไป invoices.vat_rate ตอนออกบิล) จำนวนวันประกัน และจำนวนวันที่นับว่าของค้างคลัง ไม่มีตารางแคมเปญ นัดหมาย หรือคิวโทรซ้ำ
 
 **ค้นบิลซ่อมเดิมที่ยังอยู่ในประกันเพื่อเปิดงานเคลม**
 
@@ -566,7 +563,9 @@ select coalesce(max(doc_number), 0) + 1
  where doc_type = $1 and doc_year = $2;
 ```
 
-ใบแรกของปีได้ 1 เอง rollback แล้วเลขไม่หายเพราะไม่มีตัวนับให้ขยับ บิลยกเลิกยังอยู่ในตารางจึงไม่ถูกใช้เลขซ้ำ `$2` มาจากปีของ issued_at ใน Asia/Bangkok ใช้ UNIQUE `(doc_type, doc_year, doc_number)` เป็นทั้ง index ของ max และตัวกันชน ถ้าเส้นทางไหนลืมถือ advisory lock จะ error แทนออกเลขซ้ำเงียบ ๆ ห้ามผู้ใช้ย้อนปีหรือกำหนดเลขเอง เลขของตารางทั่วไปใช้ serial ได้ กฎไม่ข้ามเลขใช้เฉพาะเลขเอกสารธุรกิจ
+ใบแรกของปีได้ 1 เอง rollback แล้วเลขไม่หายเพราะไม่มีตัวนับให้ขยับ บิลยกเลิกยังอยู่ในตารางจึงไม่ถูกใช้เลขซ้ำ `$2` มาจากปีของ issued_at ใน Asia/Bangkok ใช้ UNIQUE `(doc_type, doc_year, doc_number)` เป็นทั้ง index ของ max และตัวกันชน ถ้าเส้นทางไหนลืมถือ advisory lock จะ error แทนออกเลขซ้ำเงียบ ๆ ห้ามผู้ใช้ย้อนปีหรือกำหนดเลขเอง กฎไม่ข้ามเลขใช้เฉพาะ invoices
+
+**เลขใบงาน ใบสั่งซื้อ และใบรับของ** ไม่เก็บเป็นคอลัมน์ เซิร์ฟเวอร์จัดรูปแบบจาก `id` ตอนแสดงผลด้วยรูปแบบคงที่ในโค้ด `JO-00012` `PO-00005` `GR-00031` เลขข้ามได้เมื่อ rollback เพราะไม่ใช่เอกสารภาษี ค้นด้วยเลขที่ให้ตัด prefix แล้วค้นด้วย id
 
 **ตัดสต็อกแบบ FIFO**
 
@@ -603,21 +602,23 @@ check (qty_received > 0 and qty_remaining >= 0 and qty_remaining <= qty_received
 
 **ยกเลิกใบงานได้เฉพาะยังไม่เริ่มและไม่เคยเบิก** ตรวจ status = pending และไม่มี stock_movements ที่อ้าง demand ของงานนั้น ต้องมีเหตุผล ผู้กดและเวลา ปิด demand ที่ยังไม่ได้เบิก ห้ามใช้แค่ยอดเบิกสุทธิเป็นศูนย์ เพราะอาจเคยเบิกแล้วคืน
 
-**รับเงิน/ยกเลิกแข่งกันต้องสำเร็จได้ทางเดียว** lock บิลแล้วตรวจ status และ received_at ใหม่ใน transaction การกดรับเงินซ้ำห้ามเขียนซ้ำ การยกเลิกซ้ำห้ามคืนของซ้ำ การออกบิลซ่อมซ้ำถูกบล็อกด้วย partial unique index การขายหน้าร้านและรับของต้องส่ง receipt_number หรือ client request key เดิมเมื่อ retry เพื่อไม่สร้างธุรกรรมใหม่ซ้ำ
+**รับเงิน/ยกเลิกแข่งกันต้องสำเร็จได้ทางเดียว** lock บิลแล้วตรวจ status และ received_at ใหม่ใน transaction การกดรับเงินซ้ำห้ามเขียนซ้ำ การยกเลิกซ้ำห้ามคืนของซ้ำ การออกบิลซ่อมซ้ำถูกบล็อกด้วย partial unique index การขายหน้าร้าน รับของ เปิดใบงาน และเปิดใบสั่งซื้อต้องส่ง request key เดิมเมื่อ retry เพื่อไม่สร้างธุรกรรมใหม่ซ้ำ
 
-สำหรับคำสั่งสร้างที่ยังไม่มี business key เช่นขายหน้าร้านและเปิดใบงาน ให้มี `audit_events.request_key uuid` nullable พร้อม unique index เมื่อไม่ null บันทึกบน event หลักของคำสั่งใน transaction เดียว พร้อม actor และ fingerprint ของ input ใน changes คำสั่งซ้ำ key เดิมและ input เดิมคืนผล entity เดิม; key เดิมแต่ input/actor ต่างกันให้ปฏิเสธ ก่อนทำ side effect ต้องตรวจ key ภายใต้ advisory lock ทุก retry ใช้ key เดิม
+สำหรับคำสั่งสร้างที่ไม่มี business key ได้แก่ ขายหน้าร้าน เปิดใบงาน เปิดใบสั่งซื้อ และรับของ ให้มี `audit_events.request_key uuid` nullable พร้อม unique index เมื่อไม่ null บันทึกบน event หลักของคำสั่งใน transaction เดียว พร้อม actor และ fingerprint ของ input ใน changes คำสั่งซ้ำ key เดิมและ input เดิมคืนผล entity เดิม; key เดิมแต่ input/actor ต่างกันให้ปฏิเสธ ก่อนทำ side effect ต้องตรวจ key ภายใต้ advisory lock ทุก retry ใช้ key เดิม
 
 ---
 
 ## จุดที่ควรระวังตอน implement
 
-- **ราคาขายและ VAT** `line_total = round(qty * unit_price, 2)` เป็น generated column; `grand_total = sum(line_total) - discount_amount`; `subtotal_ex_vat = round(grand_total / (1 + vat_rate / 100), 2)`; `vat_amount = grand_total - subtotal_ex_vat` ไม่ปัด VAT สองทางแยกกัน ค่าเริ่มต้น VAT = 7 และเก็บอัตราจริงบนบิล งานเคลมฐานและ VAT เป็น 0
-- **ต้นทุนและกำไร** `cost_total = round(coalesce(sum(invoice_item_lots.qty * stock_lots.unit_cost), 0), 2)` เก็บตอนออกบิลแม้ยังไม่รับเงิน; `gross_profit = subtotal_ex_vat - cost_total` เป็น generated column การใช้ grand_total แทนฐานก่อน VAT ทำให้กำไรสูงเกินจริงเท่ากับ VAT ขาย
+- **ราคาขายและ VAT** `line_total = round(qty * unit_price, 2)` เป็น generated column; `grand_total = sum(line_total) - discount_amount`; `subtotal_ex_vat = round(grand_total / (1 + vat_rate / 100), 2)`; `vat_amount = grand_total - subtotal_ex_vat` ไม่ปัด VAT สองทางแยกกัน คัดลอก settings.vat_rate (เริ่มต้น 7) ไปเก็บบนบิลตอนออก เปลี่ยนค่าตั้งแล้วบิลเก่าไม่เปลี่ยน งานเคลมฐานและ VAT เป็น 0
+- **ต้นทุนและกำไร** `cost_total = round(coalesce(sum(invoice_item_lots.qty * stock_lots.unit_cost), 0), 2)` เก็บตอนออกบิลแม้ยังไม่รับเงิน; กำไรขั้นต้นไม่เก็บเป็นคอลัมน์ รายงานคำนวณ `subtotal_ex_vat - cost_total` ตอนอ่าน การใช้ grand_total แทนฐานก่อน VAT ทำให้กำไรสูงเกินจริงเท่ากับ VAT ขาย
 - **ผลงานช่าง** ใช้ส่วนลดเงินบาททั้งบิล `labor_total` คือ line_total ของแถว item_type = labor (ไม่มีแถวคือ 0) `labor_discount = round(discount_amount * labor_total / sum(line_total), 2)` หากยอดก่อนลดเป็น 0 ให้ labor_discount เป็น 0; `labor_net_ex_vat = round((labor_total - labor_discount) / (1 + vat_rate / 100), 2)` เก็บบนบิล นับเฉพาะงานปกติ closed ตาม closed_at และช่าง is_primary ใน job_order_mechanics ซึ่งล็อกตั้งแต่ done งานเคลม labor_total/labor_discount/labor_net_ex_vat เป็น 0
 - **รายงานการเงิน** ใช้ issued_at ตามเวลาไทยและ status = issued รวมต้นทุนงานเคลม ไม่รวมบิลยกเลิก เก็บตัวเลขบิลยกเลิกไว้ครบ รายงานตามสถานะปัจจุบันจึงเปลี่ยนเมื่อยกเลิกบิลย้อนหลัง รุ่นนี้ไม่มีการปิดงวดบัญชี
 - **ภาษีขาย** เพิ่มเงื่อนไข doc_type = tax_invoice เสมอ มีทะเบียนบิลยกเลิกต่างหาก; **ภาษีซื้อ** รวม goods_receipts ที่ supplier_invoice_no is not null หนึ่งครั้งต่อเอกสารตาม supplier_invoice_date ไม่ผูกกับยอดเหลือในคลัง
 - **วันรับประกันและรอบบำรุงรักษาเริ่มจากส่งมอบ** ตอนออกบิลล็อกเพียงจำนวนวันประกันงานปกติและจำนวนเดือนบำรุงรักษา ตอนรับเงิน/ส่งมอบจึงตั้งวันหมดประกันและสร้างรอบเตือน บิลยกเลิกก่อนรับเงินจึงยังไม่มีทั้งสองอย่าง งานเคลมไม่ต่อประกันแต่เปลี่ยนอะไหล่แล้วเริ่มรอบบำรุงรักษาใหม่ได้
 - **ของค้างคลัง** ต้องมีคงเหลือ > 0 และวันเบิก issue ล่าสุดเกิน settings จำนวนวัน; ถ้าไม่เคยเบิกใช้วันเข้าคลังครั้งแรกของสินค้า จุดสั่งซื้อใช้คงเหลือพร้อมเบิก <= min_stock และ min_stock > 0
+
+- **FK วงกลมใน migration** `job_orders.warranty_source_invoice_id ↔ invoices.job_id` และ `stock_movements.invoice_item_lot_id → invoice_item_lots → invoice_items → invoices` สร้างตารางก่อนแล้วเพิ่ม FK ทีหลังด้วย `use_alter=True` หรือ `op.create_foreign_key`
 
 ## ขอบเขต module สำหรับ implementation
 

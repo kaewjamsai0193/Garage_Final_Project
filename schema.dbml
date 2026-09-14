@@ -1,0 +1,296 @@
+// สำหรับวางใน dbdiagram.io เท่านั้น ไม่ใช่ migration จริง
+// ตัด CHECK, partial unique index และ generated column ออก ดูกฎครบที่ data_model.md
+
+Table users {
+  id serial [pk]
+  username varchar(50) [not null, unique]
+  password_hash varchar(255) [not null]
+  full_name varchar(200) [not null]
+  role varchar(20) [not null, note: 'admin / employee / mechanic']
+  is_active boolean [not null]
+  created_at timestamptz [not null]
+}
+
+Table customers {
+  id serial [pk]
+  phone varchar(20) [not null]
+  name varchar(200) [not null]
+  address varchar(500)
+  tax_id varchar(20)
+  created_at timestamptz [not null]
+}
+
+Table vehicles {
+  id serial [pk]
+  customer_id integer [not null, ref: > customers.id]
+  plate varchar(20) [not null]
+  plate_province varchar(50) [not null]
+  vehicle_type varchar(20) [not null, note: 'car / motorcycle']
+  brand varchar(50)
+  model varchar(50)
+  year integer
+  notes text
+
+  indexes {
+    (plate_province, plate) [unique]
+  }
+}
+
+Table products {
+  id serial [pk]
+  code varchar(50) [not null, unique]
+  name varchar(200) [not null]
+  unit varchar(20) [not null]
+  sale_price numeric(14,4) [not null, note: 'รวม VAT']
+  min_stock numeric(12,3) [not null]
+  maintenance_cycle_months integer
+  is_active boolean [not null]
+}
+
+Table suppliers {
+  id serial [pk]
+  name varchar(200) [not null]
+  phone varchar(20)
+  tax_id varchar(20)
+  address varchar(500)
+}
+
+Table purchase_orders {
+  id serial [pk]
+  supplier_id integer [not null, ref: > suppliers.id]
+  status varchar(20) [not null, note: 'open / closed / cancelled']
+  close_reason text
+  closed_by integer [ref: > users.id]
+  closed_at timestamptz
+  created_by integer [not null, ref: > users.id]
+  created_at timestamptz [not null]
+}
+
+Table purchase_order_items {
+  id serial [pk]
+  po_id integer [not null, ref: > purchase_orders.id]
+  product_id integer [not null, ref: > products.id]
+  qty_ordered numeric(12,3) [not null]
+  unit_price numeric(14,4) [not null]
+}
+
+Table goods_receipts {
+  id serial [pk]
+  supplier_id integer [ref: > suppliers.id]
+  po_id integer [ref: > purchase_orders.id, note: 'null คือซื้อด่วน']
+  supplier_invoice_no varchar(50)
+  supplier_invoice_date date
+  supplier_name varchar(200) [not null]
+  supplier_address varchar(500)
+  supplier_tax_id varchar(20)
+  subtotal_ex_vat numeric(12,2) [not null]
+  vat_amount numeric(12,2) [not null]
+  grand_total numeric(12,2) [not null]
+  created_by integer [not null, ref: > users.id]
+  created_at timestamptz [not null]
+}
+
+Table stock_lots {
+  id serial [pk]
+  product_id integer [not null, ref: > products.id]
+  source_type varchar(20) [not null, note: 'receipt / adjustment / opening']
+  receipt_id integer [ref: > goods_receipts.id]
+  po_item_id integer [ref: > purchase_order_items.id]
+  received_at timestamptz [not null, note: 'เรียงคิว FIFO']
+  unit_cost numeric(14,4) [not null]
+  qty_received numeric(12,3) [not null]
+  qty_remaining numeric(12,3) [not null]
+  cost_total numeric(12,2) [not null]
+  vat_amount numeric(12,2) [not null]
+  reason text
+  created_by integer [not null, ref: > users.id]
+}
+
+Table stock_movements {
+  id serial [pk]
+  lot_id integer [not null, ref: > stock_lots.id]
+  qty numeric(12,3) [not null, note: 'บวกเข้า ลบออก']
+  movement_type varchar(20) [not null, note: 'receive / issue / return / adjust / opening']
+  demand_id integer [ref: > job_part_demands.id]
+  invoice_item_lot_id integer [ref: > invoice_item_lots.id]
+  reason text
+  created_by integer [not null, ref: > users.id]
+  created_at timestamptz [not null]
+}
+
+Table job_orders {
+  id serial [pk]
+  vehicle_id integer [not null, ref: > vehicles.id]
+  customer_id integer [not null, ref: > customers.id]
+  job_type varchar(20) [not null, note: 'repair / warranty_claim']
+  warranty_source_invoice_id integer [ref: > invoices.id]
+  claim_reason text
+  mileage integer
+  symptom text
+  status varchar(20) [not null, note: 'pending / in_progress / done / closed / cancelled']
+  cancel_reason text
+  cancelled_by integer [ref: > users.id]
+  cancelled_at timestamptz
+  opened_by integer [not null, ref: > users.id]
+  opened_at timestamptz [not null]
+  closed_at timestamptz
+}
+
+Table job_order_mechanics {
+  job_id integer [not null, ref: > job_orders.id]
+  user_id integer [not null, ref: > users.id]
+  is_primary boolean [not null]
+
+  indexes {
+    (job_id, user_id) [pk]
+  }
+}
+
+Table quotations {
+  id serial [pk]
+  job_id integer [not null, ref: > job_orders.id]
+  version integer [not null]
+  status varchar(20) [not null, note: 'draft / approved / superseded']
+  labor_total numeric(12,2) [not null]
+  created_by integer [not null, ref: > users.id]
+  created_at timestamptz [not null]
+  approved_by integer [ref: > users.id]
+  approved_at timestamptz
+
+  indexes {
+    (job_id, version) [unique]
+  }
+}
+
+Table quotation_items {
+  id serial [pk]
+  quotation_id integer [not null, ref: > quotations.id]
+  product_id integer [not null, ref: > products.id]
+  description varchar(200) [not null]
+  unit varchar(20) [not null]
+  qty numeric(12,3) [not null]
+  unit_price numeric(14,4) [not null]
+  line_total numeric(12,2) [not null, note: 'generated']
+}
+
+Table job_part_demands {
+  id serial [pk]
+  job_id integer [not null, ref: > job_orders.id]
+  product_id integer [not null, ref: > products.id]
+  source_quotation_id integer [not null, ref: > quotations.id]
+  qty_required numeric(12,3) [not null]
+  queued_at timestamptz [not null]
+}
+
+Table invoices {
+  id serial [pk]
+  doc_type varchar(20) [not null, note: 'tax_invoice / warranty_claim']
+  doc_year integer [not null]
+  doc_number integer [not null]
+  display_number varchar(50) [not null]
+  job_id integer [ref: > job_orders.id, note: 'null คือขายหน้าร้าน']
+  quotation_id integer [ref: > quotations.id]
+  replaces_invoice_id integer [unique, ref: - invoices.id]
+  customer_id integer [ref: > customers.id]
+  seller_name varchar(200) [not null]
+  seller_address varchar(500) [not null]
+  seller_tax_id varchar(20) [not null]
+  buyer_name varchar(200)
+  buyer_address varchar(500)
+  buyer_tax_id varchar(20)
+  tax_invoice_form varchar(20) [note: 'abbreviated / full']
+  discount_amount numeric(12,2) [not null]
+  discount_reason text
+  vat_rate numeric(5,2) [not null]
+  subtotal_ex_vat numeric(12,2) [not null]
+  vat_amount numeric(12,2) [not null]
+  grand_total numeric(12,2) [not null]
+  cost_total numeric(12,2) [not null]
+  labor_net_ex_vat numeric(12,2) [not null]
+  status varchar(20) [not null, note: 'issued / cancelled']
+  cancel_reason text
+  cancelled_by integer [ref: > users.id]
+  cancelled_at timestamptz
+  issued_by integer [not null, ref: > users.id]
+  issued_at timestamptz [not null]
+  warranty_days integer [not null]
+  warranty_expires_on date
+  amount_received numeric(12,2)
+  withholding_amount numeric(12,2)
+  payment_method varchar(20) [note: 'cash / transfer / zero_total']
+  received_by integer [ref: > users.id]
+  received_at timestamptz
+
+  indexes {
+    (doc_type, doc_year, doc_number) [unique]
+  }
+}
+
+Table invoice_items {
+  id serial [pk]
+  invoice_id integer [not null, ref: > invoices.id]
+  item_type varchar(10) [not null, note: 'part / labor']
+  product_id integer [ref: > products.id]
+  description varchar(200) [not null]
+  unit varchar(20) [not null]
+  qty numeric(12,3) [not null]
+  unit_price numeric(14,4) [not null]
+  line_total numeric(12,2) [not null, note: 'generated']
+  maintenance_cycle_months integer
+}
+
+Table invoice_item_lots {
+  id serial [pk]
+  invoice_item_id integer [not null, ref: > invoice_items.id]
+  lot_id integer [not null, ref: > stock_lots.id]
+  qty numeric(12,3) [not null]
+
+  indexes {
+    (invoice_item_id, lot_id) [unique]
+  }
+}
+
+Table maintenance_reminders {
+  id serial [pk]
+  vehicle_id integer [not null, ref: > vehicles.id]
+  product_id integer [not null, ref: > products.id]
+  due_date date [not null]
+  source_invoice_id integer [not null, ref: > invoices.id]
+  note text
+  close_reason varchar(20) [note: 'dismissed / replaced']
+  closed_at timestamptz
+  closed_by integer [ref: > users.id]
+  created_at timestamptz [not null]
+
+  indexes {
+    (source_invoice_id, product_id) [unique]
+  }
+}
+
+Table settings {
+  id integer [pk, note: 'แถวเดียว id = 1']
+  shop_name varchar(200) [not null]
+  shop_address varchar(500) [not null]
+  shop_tax_id varchar(20) [not null]
+  tax_invoice_number_format varchar(50) [not null]
+  warranty_claim_number_format varchar(50) [not null]
+  repair_warranty_days integer [not null]
+  dead_stock_days integer [not null]
+  vat_rate numeric(5,2) [not null]
+  updated_by integer [ref: > users.id]
+  updated_at timestamptz
+}
+
+Table audit_events {
+  id serial [pk]
+  request_key uuid [unique]
+  actor_id integer [not null, ref: > users.id]
+  job_id integer [ref: > job_orders.id]
+  actor_role varchar(20) [not null]
+  action varchar(50) [not null]
+  entity_type varchar(50) [not null]
+  entity_id integer [not null]
+  changes jsonb
+  reason text
+  created_at timestamptz [not null]
+}
